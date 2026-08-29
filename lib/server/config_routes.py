@@ -17,8 +17,8 @@ from lib.kneeboard_order import (
     KNEEBOARD_ORDER_SECTION,
     discover_kneeboard_pages,
     max_kneeboard_pages,
-    resolve_kneeboard_order,
-    save_kneeboard_order,
+    resolve_kneeboard_sides,
+    save_kneeboard_sides,
 )
 from lib.map_sources import REPLACED_MAP_SYSTEM_KEYS, map_source_options
 
@@ -72,12 +72,30 @@ class KneeboardOrderItem(BaseModel):
 
 
 class KneeboardOrderUpdate(BaseModel):
-    pages: List[KneeboardOrderItem]
+    pages: Optional[List[KneeboardOrderItem]] = None
+    pages_left: Optional[List[KneeboardOrderItem]] = None
+    pages_right: Optional[List[KneeboardOrderItem]] = None
 
 
 class SourceFileAckRequest(BaseModel):
     brief_mtime: Optional[float] = None
     callsign_mtime: Optional[float] = None
+
+
+def _bms_source_identity(bms_cfg: Any) -> tuple[str, str, str] | None:
+    if bms_cfg is None:
+        return None
+    base_dir = os.path.normcase(os.path.abspath(str(getattr(bms_cfg, "base_dir", ""))))
+    theater = str(getattr(bms_cfg, "theater", "")).casefold()
+    version = str(getattr(bms_cfg, "version", ""))
+    return base_dir, theater, version
+
+
+def _replace_bms_config(app: FastAPI, bms_cfg: Any, *, force_invalidate: bool = False) -> None:
+    changed = _bms_source_identity(app.state.bms_cfg) != _bms_source_identity(bms_cfg)
+    app.state.bms_cfg = bms_cfg
+    if force_invalidate or changed:
+        app.state.chart_service.invalidate_sources()
 
 
 def register_config_routes(
@@ -127,37 +145,53 @@ def register_config_routes(
 
     @app.get("/api/kneeboard/order")
     def get_kneeboard_order() -> Dict[str, Any]:
-        return _kneeboard_order_response(app.state.cfg)
+        return _kneeboard_order_response(app, app.state.cfg)
 
     @app.post("/api/kneeboard/order")
     def update_kneeboard_order(payload: KneeboardOrderUpdate) -> Dict[str, Any]:
-        available, _ = discover_kneeboard_pages(app.state.cfg, _airframe(app.state.cfg))
+        available, _ = discover_kneeboard_pages(
+            app.state.cfg,
+            _airframe(app.state.cfg),
+            bms_cfg=app.state.bms_cfg,
+            chart_service=app.state.chart_service,
+            path_resolver=app.state.resolve_path,
+        )
         available_ids = {page.id for page in available}
-        normalized: List[Dict[str, Any]] = []
+        if payload.pages_left is not None or payload.pages_right is not None:
+            submitted_left = list(payload.pages_left or [])
+            submitted_right = list(payload.pages_right or [])
+        else:
+            legacy = list(payload.pages or [])
+            submitted_left = legacy[::2]
+            submitted_right = legacy[1::2]
+        normalized: Dict[str, List[Dict[str, Any]]] = {"left": [], "right": []}
         save_warnings: List[str] = []
         seen: set[str] = set()
-        for page in payload.pages:
-            page_id = str(page.id or "").strip()
-            if not page_id or page_id in seen:
-                continue
-            if page_id not in available_ids:
-                save_warnings.append(f"Kneeboard order: skipped unavailable page {page_id}.")
-                continue
-            seen.add(page_id)
-            normalized.append({"id": page_id, "included": page.included})
+        for side, submitted in (("left", submitted_left), ("right", submitted_right)):
+            for page in submitted:
+                page_id = str(page.id or "").strip()
+                if not page_id or page_id in seen:
+                    continue
+                if page_id not in available_ids:
+                    save_warnings.append(f"Kneeboard order: skipped unavailable page {page_id}.")
+                    continue
+                seen.add(page_id)
+                normalized[side].append({"id": page_id, "included": page.included})
         for page in available:
             if page.id not in seen:
-                normalized.append({"id": page.id, "included": True})
+                side = "left" if len(normalized["left"]) <= len(normalized["right"]) else "right"
+                normalized[side].append({"id": page.id, "included": True})
 
-        normalized = [page for page in normalized if page["included"]] + [
-            page for page in normalized if not page["included"]
-        ]
-        save_kneeboard_order(app.state.cfg, normalized)
+        for side in ("left", "right"):
+            normalized[side] = [page for page in normalized[side] if page["included"]] + [
+                page for page in normalized[side] if not page["included"]
+            ]
+        save_kneeboard_sides(app.state.cfg, normalized["left"], normalized["right"])
 
         cfg_to_persist = load_config(app.state.config_path)
-        save_kneeboard_order(cfg_to_persist, normalized)
+        save_kneeboard_sides(cfg_to_persist, normalized["left"], normalized["right"])
         save_config(cfg_to_persist, app.state.config_path)
-        return _kneeboard_order_response(app.state.cfg, extra_warnings=save_warnings)
+        return _kneeboard_order_response(app, app.state.cfg, extra_warnings=save_warnings)
 
     @app.post("/api/custom-checklist/template")
     def save_custom_checklist_template(payload: CustomChecklistSaveRequest) -> Dict[str, Any]:
@@ -220,7 +254,10 @@ def register_config_routes(
         save_config(cfg_to_persist, app.state.config_path)
         ensure_dirs(app.state.cfg)
         configure_debug_file_logging(app.state.cfg)
-        app.state.bms_cfg = BmsConfig(app.state.cfg, theater_ini_pattern=app.state.theater_ini_pattern)
+        _replace_bms_config(
+            app,
+            BmsConfig(app.state.cfg, theater_ini_pattern=app.state.theater_ini_pattern),
+        )
         return _serialize_config(app.state.cfg)
 
     @app.post("/api/config/runtime")
@@ -239,7 +276,10 @@ def register_config_routes(
         ensure_dirs(app.state.cfg)
         configure_debug_file_logging(app.state.cfg)
         try:
-            app.state.bms_cfg = BmsConfig(app.state.cfg, theater_ini_pattern=app.state.theater_ini_pattern)
+            _replace_bms_config(
+                app,
+                BmsConfig(app.state.cfg, theater_ini_pattern=app.state.theater_ini_pattern),
+            )
         except Exception as exc:
             logger.error("Failed to reload BMS config (runtime): %s", exc)
             raise HTTPException(status_code=500, detail=f"Failed to reload BMS config: {exc}")
@@ -291,7 +331,11 @@ def register_config_routes(
     @app.post("/api/reload")
     def reload_bms_config() -> Dict[str, Any]:
         try:
-            app.state.bms_cfg = BmsConfig(app.state.cfg, theater_ini_pattern=app.state.theater_ini_pattern)
+            _replace_bms_config(
+                app,
+                BmsConfig(app.state.cfg, theater_ini_pattern=app.state.theater_ini_pattern),
+                force_invalidate=True,
+            )
         except Exception as exc:
             logger.error("Failed to reload BMS config: %s", exc)
             raise HTTPException(status_code=500, detail=f"Failed to reload BMS config: {exc}")
@@ -312,6 +356,7 @@ def register_config_routes(
             "pdf_output_dir": cfg["system"]["pdf_output_dir"],
             "pages": page_contents_ini_to_list(cfg),
             "pdf_pages": app.state.pdf_page_count,
+            "pdf_combined_pages": app.state.pdf_combined_page_count,
             "brief_pages": app.state.brief_pages_ref,
             "pdf_overflow": app.state.pdf_overflow,
             "pdf_status": app.state.pdf_status,
@@ -385,17 +430,32 @@ def _airframe(cfg: configparser.ConfigParser) -> str:
 
 
 def _kneeboard_order_response(
+    app: FastAPI,
     cfg: configparser.ConfigParser,
     extra_warnings: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     airframe = _airframe(cfg)
-    pages, warnings = resolve_kneeboard_order(cfg, airframe)
+    pages_left, pages_right, warnings = resolve_kneeboard_sides(
+        cfg,
+        airframe,
+        bms_cfg=app.state.bms_cfg,
+        chart_service=app.state.chart_service,
+        path_resolver=app.state.resolve_path,
+    )
     if extra_warnings:
         warnings = extra_warnings + warnings
+    interleaved: List[Any] = []
+    for index in range(max(len(pages_left), len(pages_right))):
+        if index < len(pages_left):
+            interleaved.append(pages_left[index])
+        if index < len(pages_right):
+            interleaved.append(pages_right[index])
     return {
         "airframe": airframe,
         "max_pages": max_kneeboard_pages(airframe),
-        "pages": [page.to_dict() for page in pages],
+        "pages": [page.to_dict() for page in interleaved],
+        "pages_left": [page.to_dict() for page in pages_left],
+        "pages_right": [page.to_dict() for page in pages_right],
         "warnings": warnings,
         "saved": cfg.has_section(KNEEBOARD_ORDER_SECTION),
     }

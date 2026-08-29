@@ -1,12 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-hiddenimports = ['pystray._win32', 'lib.pdf_worker']
+hiddenimports = ['pystray._win32', 'lib.pdf_worker', 'openchart.fonts']
 
 a = Analysis(
     ['html_brief.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[
+        ('openchart/assets/*.svg', 'openchart/assets'),
+        ('openchart/assets/*.csv', 'openchart/assets'),
+        ('openchart/fonts/*.otf', 'openchart/fonts'),
+        ('openchart/fonts/LICENSE', 'openchart/fonts'),
+        ('openchart/third_party_licenses/*.md', 'openchart/third_party_licenses'),
+        ('licenses/python/openchart-OpenTaxiway-LICENSE.md', 'licenses/python'),
+    ],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},

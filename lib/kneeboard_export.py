@@ -1,105 +1,156 @@
-import os, logging, tempfile, shutil
+from __future__ import annotations
+
+import logging
+import os
+import shutil
+import tempfile
+from pathlib import Path
+from typing import Any, Iterable
 
 from PIL import Image
 import pymupdf
 
-from lib.kneeboard_order import resolve_kneeboard_order
+from lib.kneeboard_order import KneeboardPage, resolve_kneeboard_sides
 
-logger = logging.getLogger('html_brief_log')
-logger_ui = logging.getLogger('ui_logger')
 
-def export_kneeboards(conf, bms_conf):
-    copy_to_kto = (bms_conf.theater_config[bms_conf.theater]['copy_to_kto'] == 'True')
-    airframe = conf['bms']['default_airframe']
+logger = logging.getLogger("html_brief_log")
+logger_ui = logging.getLogger("ui_logger")
+SIDE_LIMIT = 16
+F15_LIMIT = 16
+
+
+def export_kneeboards(conf: Any, bms_conf: Any, *, chart_service: Any | None = None) -> None:
+    copy_to_kto = bms_conf.theater_config[bms_conf.theater]["copy_to_kto"] == "True"
+    airframe = conf["bms"]["default_airframe"]
     if airframe not in {"F-16", "F-15"}:
         raise ValueError(f"Unsupported airframe for kneeboard export: {airframe}")
-    output = bms_conf.theater_config[bms_conf.theater]['target_folder']
-    ordered_pages, warnings = resolve_kneeboard_order(conf, airframe)
+    output = bms_conf.theater_config[bms_conf.theater]["target_folder"]
+    left, right, warnings = resolve_kneeboard_sides(
+        conf,
+        airframe,
+        bms_cfg=bms_conf,
+        chart_service=chart_service,
+    )
     for warning in warnings:
         logger_ui.warning(warning)
-    export_pages = [page for page in ordered_pages if page.included]
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        pages_conv = _render_export_pages(export_pages, tmp_dir)
+    left = [page for page in left if page.included and page.available]
+    right = [page for page in right if page.included and page.available]
+
+    with tempfile.TemporaryDirectory() as temp_dir:
         if airframe == "F-16":
-            for i in range((len(pages_conv)+1)//2):
-                if (i < 16):
-                    kneeboard_name = os.path.join(output, str(7982+i) + ".dds")
-                    kto_kneeboard_name = os.path.join(bms_conf.kto_target_folder, str(7982+i) + ".dds")
-                    if os.path.isfile(kneeboard_name):
-                        logger_ui.info(f"Backing up {kneeboard_name} to {kneeboard_name}.bkp...")
-                        shutil.copyfile(kneeboard_name, kneeboard_name + ".bkp")
-                    if copy_to_kto:
-                        if os.path.isfile(kto_kneeboard_name):
-                            logger_ui.info(f"Backing up {kto_kneeboard_name} to {kto_kneeboard_name}.bkp...")
-                            shutil.copyfile(kto_kneeboard_name, kto_kneeboard_name + ".bkp")
-                    if (2*i + 1) < len(pages_conv):
-                        im1 = Image.open(os.path.join(tmp_dir, pages_conv[2*i])).resize((1024, 2048))
-                        im2 = Image.open(os.path.join(tmp_dir, pages_conv[2*i + 1])).resize((1024, 2048))
-                        im_joined = Image.new("RGBA", (2048, 2048), 'white')
-                        im_joined.paste(im1)
-                        im_joined.paste(im2, (im1.size[0], 0))
-                        im_joined.save(kneeboard_name)
-                        if copy_to_kto:
-                            im_joined.save(kto_kneeboard_name)
-                        im1.close()
-                        im2.close()
-                        im_joined.close()
-                    else:
-                        im1 = Image.open(os.path.join(tmp_dir, pages_conv[2*i])).resize((1024, 2048))
-                        im_joined = Image.new("RGBA", (2048, 2048), 'white')
-                        im_joined.paste(im1)
-                        im_joined.save(kneeboard_name)
-                        if copy_to_kto:
-                            im_joined.save(kto_kneeboard_name)
-                        im1.close()
-                        im_joined.close()
-                else:
-                    logger_ui.info("Too many pages, stopping.")
-                    break
-        if airframe == "F-15":
-            for i in range(len(pages_conv)):
-                if (i < 16):
-                    kneeboard_name = os.path.join(output, str(1403+i) + ".dds")
-                    kto_kneeboard_name = os.path.join(bms_conf.kto_target_folder, str(1403+i) + ".dds")
-                    if os.path.isfile(kneeboard_name):
-                        logger_ui.info(f"Backing up {kneeboard_name} to {kneeboard_name}.bkp...")
-                        shutil.copyfile(kneeboard_name, kneeboard_name + ".bkp")
-                    if copy_to_kto:
-                        if os.path.isfile(kto_kneeboard_name):
-                            logger_ui.info(f"Backing up {kto_kneeboard_name} to {kto_kneeboard_name}.bkp...")
-                            shutil.copyfile(kto_kneeboard_name, kto_kneeboard_name + ".bkp")
-                    im1 = Image.open(os.path.join(tmp_dir, pages_conv[i])).resize((1024, 2048))
-                    im_joined = Image.new("RGBA", (2048, 2048), 'white')
-                    im_joined.paste(im1, (im1.size[0], 0))
-                    im_joined.save(kneeboard_name)
-                    if copy_to_kto:
-                        im_joined.save(kto_kneeboard_name)
-                    im1.close()
-                    im_joined.close()
-                else:
-                    logger_ui.info("Too many pages, stopping.")
-                    break
+            _export_f16(left, right, temp_dir, output, bms_conf, copy_to_kto)
+        else:
+            interleaved: list[KneeboardPage] = []
+            for index in range(max(len(left), len(right))):
+                if index < len(left):
+                    interleaved.append(left[index])
+                if index < len(right):
+                    interleaved.append(right[index])
+            if len(interleaved) > F15_LIMIT:
+                logger_ui.warning(
+                    "Kneeboard order: F-15 export omitted %d page(s) after the first %d.",
+                    len(interleaved) - F15_LIMIT,
+                    F15_LIMIT,
+                )
+            rendered = _render_export_pages(interleaved[:F15_LIMIT], temp_dir, prefix="f15")
+            _export_f15(rendered, temp_dir, output, bms_conf, copy_to_kto)
 
 
-def _render_export_pages(export_pages, tmp_dir):
-    pages_conv = []
-    for i, page_ref in enumerate(export_pages):
-        out_name = f"page_{i:02d}.png"
-        out_path = os.path.join(tmp_dir, out_name)
+def _export_f16(
+    left: list[KneeboardPage],
+    right: list[KneeboardPage],
+    temp_dir: str,
+    output: str,
+    bms_conf: Any,
+    copy_to_kto: bool,
+) -> None:
+    if len(left) > SIDE_LIMIT:
+        logger_ui.warning("Kneeboard order: F-16 left side omitted %d page(s) after the first %d.", len(left) - SIDE_LIMIT, SIDE_LIMIT)
+    if len(right) > SIDE_LIMIT:
+        logger_ui.warning("Kneeboard order: F-16 right side omitted %d page(s) after the first %d.", len(right) - SIDE_LIMIT, SIDE_LIMIT)
+    left_rendered = _render_export_pages(left[:SIDE_LIMIT], temp_dir, prefix="left")
+    right_rendered = _render_export_pages(right[:SIDE_LIMIT], temp_dir, prefix="right")
+    for index in range(max(len(left_rendered), len(right_rendered))):
+        target = Path(output) / f"{7982 + index}.dds"
+        kto_target = Path(bms_conf.kto_target_folder) / f"{7982 + index}.dds"
+        _backup_targets(target, kto_target, copy_to_kto)
+        joined = Image.new("RGBA", (2048, 2048), "white")
+        try:
+            if index < len(left_rendered):
+                with Image.open(Path(temp_dir) / left_rendered[index]) as image:
+                    joined.paste(image.resize((1024, 2048)), (0, 0))
+            if index < len(right_rendered):
+                with Image.open(Path(temp_dir) / right_rendered[index]) as image:
+                    joined.paste(image.resize((1024, 2048)), (1024, 0))
+            joined.save(target)
+            if copy_to_kto:
+                joined.save(kto_target)
+        finally:
+            joined.close()
+
+
+def _export_f15(
+    rendered: list[str],
+    temp_dir: str,
+    output: str,
+    bms_conf: Any,
+    copy_to_kto: bool,
+) -> None:
+    for index, source_name in enumerate(rendered):
+        target = Path(output) / f"{1403 + index}.dds"
+        kto_target = Path(bms_conf.kto_target_folder) / f"{1403 + index}.dds"
+        _backup_targets(target, kto_target, copy_to_kto)
+        joined = Image.new("RGBA", (2048, 2048), "white")
+        try:
+            with Image.open(Path(temp_dir) / source_name) as image:
+                joined.paste(image.resize((1024, 2048)), (1024, 0))
+            joined.save(target)
+            if copy_to_kto:
+                joined.save(kto_target)
+        finally:
+            joined.close()
+
+
+def _backup_targets(target: Path, kto_target: Path, copy_to_kto: bool) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.is_file():
+        logger_ui.info("Backing up %s to %s.bkp...", target, target)
+        shutil.copyfile(target, str(target) + ".bkp")
+    if copy_to_kto:
+        kto_target.parent.mkdir(parents=True, exist_ok=True)
+        if kto_target.is_file():
+            logger_ui.info("Backing up %s to %s.bkp...", kto_target, kto_target)
+            shutil.copyfile(kto_target, str(kto_target) + ".bkp")
+
+
+def _render_export_pages(
+    export_pages: Iterable[KneeboardPage],
+    temp_dir: str,
+    *,
+    prefix: str = "page",
+) -> list[str]:
+    pages_conv: list[str] = []
+    for index, page_ref in enumerate(export_pages):
+        out_name = f"{prefix}_{index:02d}.png"
+        out_path = Path(temp_dir) / out_name
         if page_ref.kind == "image":
-            logger_ui.info(f"Processing an image file: {page_ref.path.name}")
+            logger_ui.info("Processing an image file: %s", page_ref.path.name)
             with Image.open(page_ref.path) as source_img:
-                img = source_img.resize((1024, 2048))
-                img.save(out_path)
-                img.close()
+                resized = source_img.resize((1024, 2048))
+                try:
+                    resized.save(out_path)
+                finally:
+                    resized.close()
         else:
             page_number = 1 if page_ref.page_index is None else page_ref.page_index + 1
-            logger_ui.info(f"Processing PDF page: {page_ref.path.name} page {page_number}")
-            with pymupdf.open(page_ref.path) as doc:
-                if page_ref.page_index is None or page_ref.page_index >= len(doc):
-                    logger_ui.warning(f"Kneeboard order: skipped missing PDF page {page_ref.id}.")
+            logger_ui.info("Processing PDF page: %s page %d", page_ref.path.name, page_number)
+            with pymupdf.open(page_ref.path) as document:
+                if page_ref.page_index is None or page_ref.page_index >= len(document):
+                    logger_ui.warning("Kneeboard order: skipped missing PDF page %s.", page_ref.id)
                     continue
-                pix = doc[page_ref.page_index].get_pixmap(dpi=150)
-                pix.save(out_path)
+                document[page_ref.page_index].get_pixmap(dpi=150).save(out_path)
         pages_conv.append(out_name)
     return pages_conv
+
+
+__all__ = ["export_kneeboards"]

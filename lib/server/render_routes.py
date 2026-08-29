@@ -21,7 +21,7 @@ class PreviewRequest(BaseModel):
     bms: Optional[Dict[str, str]] = None
     system: Optional[Dict[str, str]] = None
     theater: Optional[Dict[str, Any]] = None
-    kneeboard_order: Optional[List[Dict[str, Any]]] = None
+    kneeboard_order: Optional[Any] = None
     selected_package_index: Optional[int] = None
     update_change_refs: Optional[bool] = True
 

@@ -609,6 +609,48 @@
       accent-color: #80bfff;
     }
 
+    .sortable li.is-unavailable {
+      color: rgba(212, 212, 212, 0.55);
+    }
+
+    .chart-role-grid {
+      display: grid;
+      gap: 0.7rem;
+    }
+
+    .chart-role-group {
+      border: 1px solid rgba(58, 167, 255, 0.25);
+      padding: 0.55rem;
+    }
+
+    .chart-option {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 0.45rem;
+      margin-top: 0.35rem;
+    }
+
+    .chart-state {
+      font-family: "IBMPlexMono";
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      color: rgba(212, 212, 212, 0.72);
+    }
+
+    .chart-state.generated { color: #8ee6a8; }
+    .chart-state.failed, .chart-state.stale { color: #ff9a9a; }
+    .chart-state.generating { color: #80bfff; }
+
+    .chart-dialog {
+      max-width: 32rem;
+      color: var(--text);
+      background: var(--panel-strong);
+      border: 1px solid rgba(58, 167, 255, 0.75);
+    }
+
+    .chart-dialog::backdrop { background: rgba(0, 0, 0, 0.72); }
+
     .kneeboard-order-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1216,6 +1258,36 @@
 
         <section class="mfd-box mfd-settings mfd-with-bottom-btn no-print">
           <div class="mfd-anchor mfd-anchor-right no-print">
+            <button id="save-charts-btn" type="button">Save</button>
+          </div>
+          <div class="panel-head">
+            <h3 class="heading-zero">Charts</h3>
+          </div>
+          <div id="chart-options" class="chart-role-grid">
+            <div class="chart-role-group">
+              <label>Departure</label>
+              <label class="chart-option"><input type="checkbox" value="departure_ground"><span>Ground</span><span class="chart-state" data-chart-status="departure_ground">missing</span></label>
+              <label class="chart-option"><input type="checkbox" value="departure_parking"><span>Parking</span><span class="chart-state" data-chart-status="departure_parking">missing</span></label>
+              <label class="chart-option"><input type="checkbox" value="departure_local"><span>Local</span><span class="chart-state" data-chart-status="departure_local">missing</span></label>
+            </div>
+            <div class="chart-role-group">
+              <label>Arrival</label>
+              <label class="chart-option"><input type="checkbox" value="arrival_ground"><span>Ground</span><span class="chart-state" data-chart-status="arrival_ground">missing</span></label>
+              <label class="chart-option"><input type="checkbox" value="arrival_parking"><span>Parking</span><span class="chart-state" data-chart-status="arrival_parking">missing</span></label>
+              <label class="chart-option"><input type="checkbox" value="arrival_local"><span>Local</span><span class="chart-state" data-chart-status="arrival_local">missing</span></label>
+            </div>
+            <div class="chart-role-group">
+              <label>Alternate</label>
+              <label class="chart-option"><input type="checkbox" value="alternate_ground"><span>Ground</span><span class="chart-state" data-chart-status="alternate_ground">missing</span></label>
+              <label class="chart-option"><input type="checkbox" value="alternate_parking"><span>Parking</span><span class="chart-state" data-chart-status="alternate_parking">missing</span></label>
+              <label class="chart-option"><input type="checkbox" value="alternate_local"><span>Local</span><span class="chart-state" data-chart-status="alternate_local">missing</span></label>
+            </div>
+          </div>
+          <button id="generate-charts-btn" class="mfd-bottom-btn" type="button">Generate charts</button>
+        </section>
+
+        <section class="mfd-box mfd-settings mfd-with-bottom-btn no-print">
+          <div class="mfd-anchor mfd-anchor-right no-print">
             <button id="cam-load-btn" type="button" title="Load selected campaign save" disabled>Load</button>
             <button id="cam-unload-btn" type="button" title="Unload current campaign save" disabled>Unload</button>
           </div>
@@ -1289,6 +1361,17 @@
     </div>
   </div>
 
+  <dialog id="chart-preflight-dialog" class="chart-dialog">
+    <form method="dialog">
+      <h3>Charts need generation</h3>
+      <p id="chart-preflight-message"></p>
+      <div class="button-row">
+        <button value="generate">Generate now</button>
+        <button value="skip">Skip</button>
+      </div>
+    </form>
+  </dialog>
+
   <script>
     const logEl = document.getElementById("log");
     const statusEl = document.getElementById("status-indicator");
@@ -1321,6 +1404,12 @@
     const kneeboardRightColumn = document.getElementById("kneeboard-right-column");
     const saveKneeboardOrderBtn = document.getElementById("save-kneeboard-order-btn");
     const refreshKneeboardOrderBtn = document.getElementById("refresh-kneeboard-order-btn");
+    const chartOptionsEl = document.getElementById("chart-options");
+    const chartCheckboxes = Array.from(document.querySelectorAll("#chart-options input[type='checkbox']"));
+    const saveChartsBtn = document.getElementById("save-charts-btn");
+    const generateChartsBtn = document.getElementById("generate-charts-btn");
+    const chartPreflightDialog = document.getElementById("chart-preflight-dialog");
+    const chartPreflightMessage = document.getElementById("chart-preflight-message");
     const generateBriefBtns = Array.from(document.querySelectorAll(".generate-brief-btn"));
     const camSaveSelect = document.getElementById("cam-save-select");
     const camRefreshBtn = document.getElementById("cam-refresh-btn");
@@ -2241,12 +2330,17 @@
         const data = await fetchJSON("/api/config");
         const cfg = data.bms || {};
         const sys = data.system || {};
+        const pageCfg = data.pages || {};
         availableVersionsInput.value = cfg.bms_available_versions || "";
         populateVersionSelect(cfg.bms_available_versions, cfg.bms_version);
         document.getElementById("default_airframe").value = cfg.default_airframe || "F-16";
         wineInput.value = sys.wine_prefix || "";
         document.getElementById("output_dir").value = sys.output_dir || "";
         document.getElementById("pdf_output_dir").value = sys.pdf_output_dir || "";
+        const configuredCharts = new Set(String(pageCfg.charts || "").split(",").map((value) => value.trim()).filter(Boolean));
+        chartCheckboxes.forEach((checkbox) => {
+          checkbox.checked = configuredCharts.has(checkbox.value);
+        });
         setSelectedMapSource(detectMapSource(sys));
         applyAutoExportMode(
           String(sys.auto_export_on_change || "False").toLowerCase() === "true",
@@ -2305,6 +2399,7 @@
         pages = Array.isArray(data.pages) ? data.pages : [];
         renderPages();
         await loadTheater();
+        await loadChartStatus(true);
         await refreshCamSaveList(true);
         if (!hasError && pages.length > 0) {
           await doPreview(currentOverrides());
@@ -2368,6 +2463,45 @@
         log(`Save failed: ${err.message}`);
       }
     });
+
+    if (saveChartsBtn) {
+      saveChartsBtn.addEventListener("click", async () => {
+        try {
+          await fetchJSON("/api/config", {
+            method: "POST",
+            body: JSON.stringify({ pages: { charts: selectedChartsValue() } })
+          });
+          log("Chart selections saved");
+          await loadChartStatus(true);
+          await loadKneeboardOrder(true, { preserveCurrent: true });
+        } catch (err) {
+          log(`Save chart selections failed: ${err.message}`);
+        }
+      });
+    }
+
+    if (generateChartsBtn) {
+      generateChartsBtn.addEventListener("click", async () => {
+        if (pdfBusy || exportBusy) return;
+        generateChartsBtn.disabled = true;
+        try {
+          await syncChartRuntime();
+          log("Generating selected charts...");
+          const result = await withActiveLogPolling(fetchJSON("/api/charts/generate", {
+            method: "POST",
+            body: JSON.stringify({ force: true })
+          }));
+          renderChartStatus(result);
+          log(`Chart generation completed (${result.result?.generated?.length || 0} artifact(s))`);
+          await loadKneeboardOrder(true, { preserveCurrent: true });
+        } catch (err) {
+          log(`Chart generation failed: ${err.message}`);
+          await loadChartStatus(true);
+        } finally {
+          generateChartsBtn.disabled = false;
+        }
+      });
+    }
 
     document.getElementById("reload-btn").addEventListener("click", async () => {
       try {
@@ -2491,6 +2625,78 @@
           return Number.isFinite(saved) ? saved : null;
         })()
       };
+    }
+
+    function selectedChartsValue() {
+      return chartCheckboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value).join(", ");
+    }
+
+    function renderChartStatus(data) {
+      const rows = Array.isArray(data?.selections) ? data.selections : [];
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      document.querySelectorAll("[data-chart-status]").forEach((statusEl) => {
+        const row = byId.get(statusEl.dataset.chartStatus);
+        const state = row?.state || "missing";
+        statusEl.textContent = state;
+        statusEl.className = `chart-state ${state}`;
+        statusEl.title = row?.message || (row?.airfield ? `${row.airfield}${row.shared_with?.length ? " (shared artifact)" : ""}` : "");
+      });
+    }
+
+    async function loadChartStatus(silent = false) {
+      try {
+        const data = await fetchJSON("/api/charts/status");
+        renderChartStatus(data);
+        if (!silent) {
+          (data.warnings || []).forEach((warning) => log(warning));
+        }
+        return data;
+      } catch (err) {
+        if (!silent) log(`Failed to load chart status: ${err.message}`);
+        return null;
+      }
+    }
+
+    async function syncChartRuntime() {
+      await fetchJSON("/api/config/runtime", {
+        method: "POST",
+        body: JSON.stringify({ pages: { charts: selectedChartsValue() } })
+      });
+    }
+
+    function showChartPreflightPrompt(count) {
+      const message = `${count} selected chart${count === 1 ? " is" : "s are"} missing, stale, or failed. Generate now?`;
+      if (!chartPreflightDialog || typeof chartPreflightDialog.showModal !== "function") {
+        return Promise.resolve(window.confirm(message));
+      }
+      chartPreflightMessage.textContent = message;
+      return new Promise((resolve) => {
+        chartPreflightDialog.addEventListener("close", () => resolve(chartPreflightDialog.returnValue === "generate"), { once: true });
+        chartPreflightDialog.showModal();
+      });
+    }
+
+    async function prepareChartsForPdf(source = "manual") {
+      if (!selectedChartsValue()) return;
+      await syncChartRuntime();
+      const status = await loadChartStatus(true);
+      const needed = Array.isArray(status?.needs_generation) ? status.needs_generation : [];
+      if (!needed.length) return;
+      if (source === "auto") {
+        log(`Auto-export: skipping ${needed.length} missing/stale chart selection(s).`);
+        return;
+      }
+      if (!await showChartPreflightPrompt(needed.length)) {
+        log("Chart generation skipped; unavailable charts will be omitted.");
+        return;
+      }
+      log("Generating missing/stale charts...");
+      const result = await withActiveLogPolling(fetchJSON("/api/charts/generate", {
+        method: "POST",
+        body: JSON.stringify({ force: false })
+      }));
+      renderChartStatus(result);
+      await loadKneeboardOrder(true, { preserveCurrent: true });
     }
 
     async function doGenerate(overrides = null) {
@@ -2737,7 +2943,7 @@
     }
 
     function buildPagesObj() {
-      const pagesObj = {};
+      const pagesObj = { charts: selectedChartsValue() };
       pages.forEach((p, idx) => {
         pagesObj[`page${idx + 1}`] = (p || []).join(", ");
       });
@@ -2901,6 +3107,10 @@
         btn.disabled = pipelineBusy;
         btn.title = pipelineBusy ? "PDF generation in progress" : "";
       });
+      if (generateChartsBtn) {
+        generateChartsBtn.disabled = pipelineBusy;
+        generateChartsBtn.title = pipelineBusy ? "PDF generation in progress" : "";
+      }
       if (camLoadBtn) {
         camLoadBtn.disabled = pipelineBusy || !camSaveSelect || camSaveSelect.disabled;
         camLoadBtn.title = pipelineBusy ? "PDF generation in progress" : "";
@@ -2984,11 +3194,13 @@
     }
 
     async function runPdfGeneration({ source = "manual", overrides = null, includeTheater = false, started = performance.now(), signal = null } = {}) {
+      await prepareChartsForPdf(source);
       const activeOverrides = overrides || currentOverrides();
       let payload;
       try {
         throwIfPdfAborted(signal);
         payload = { content: getLatestEdits(), ...activeOverrides };
+        payload.kneeboard_order = readKneeboardOrderSides();
         if (source === "auto") {
           payload.update_change_refs = false;
         }
@@ -3086,7 +3298,7 @@
               body: JSON.stringify({
                 ...overrides,
                 theater: payload.theater,
-                kneeboard_order: readKneeboardOrderRows()
+                kneeboard_order: readKneeboardOrderSides()
               })
             })
           );
@@ -3492,14 +3704,23 @@
 
     async function loadKneeboardOrder(silent = false, options = {}) {
       if (!kneeboardLeftList || !kneeboardRightList) return;
-      const currentRows = options.preserveCurrent ? readKneeboardOrderRows() : [];
+      const currentSides = options.preserveCurrent ? readKneeboardOrderSides() : null;
       try {
         const data = await fetchJSON("/api/kneeboard/order");
         kneeboardOrderAirframe = data.airframe || "F-16";
-        const serverPages = Array.isArray(data.pages) ? data.pages : [];
-        kneeboardOrderPages = currentRows.length
-          ? mergeKneeboardOrderPages(serverPages, currentRows)
-          : serverPages;
+        const serverSides = {
+          pages_left: Array.isArray(data.pages_left) ? data.pages_left : [],
+          pages_right: Array.isArray(data.pages_right) ? data.pages_right : []
+        };
+        const mergedSides = currentSides
+          ? mergeKneeboardOrderSides(serverSides, currentSides)
+          : serverSides;
+        kneeboardOrderPages = kneeboardOrderAirframe === "F-15"
+          ? interleaveKneeboardSides(mergedSides)
+          : [
+              ...mergedSides.pages_left.map((page) => ({ ...page, side: "left" })),
+              ...mergedSides.pages_right.map((page) => ({ ...page, side: "right" }))
+            ];
         renderKneeboardOrder();
         const warnings = Array.isArray(data.warnings) ? data.warnings : [];
         warnings.forEach((warning) => log(warning));
@@ -3511,25 +3732,43 @@
       }
     }
 
-    function mergeKneeboardOrderPages(availablePages, currentRows) {
-      const availableById = new Map((availablePages || []).map((page) => [page.id, page]));
-      const merged = [];
+    function mergeKneeboardOrderSides(availableSides, currentSides) {
+      const available = [...availableSides.pages_left, ...availableSides.pages_right];
+      const availableById = new Map(available.map((page) => [page.id, page]));
       const seen = new Set();
-      (currentRows || []).forEach((row) => {
-        if (!row || !row.id || seen.has(row.id)) return;
-        const page = availableById.get(row.id);
-        if (!page) return;
-        seen.add(row.id);
-        merged.push({ ...page, included: row.included !== false });
+      const result = { pages_left: [], pages_right: [] };
+      ["pages_left", "pages_right"].forEach((side) => {
+        (currentSides[side] || []).forEach((row) => {
+          if (!row?.id || seen.has(row.id)) return;
+          const page = availableById.get(row.id);
+          if (!page) return;
+          seen.add(row.id);
+          result[side].push({ ...page, included: row.included !== false });
+        });
       });
-      (availablePages || []).forEach((page) => {
-        if (!page || !page.id || seen.has(page.id)) return;
+      available.forEach((page) => {
+        if (!page?.id || seen.has(page.id)) return;
         seen.add(page.id);
-        merged.push(page);
+        const side = page.side === "right" ? "pages_right" : "pages_left";
+        result[side].push(page);
       });
-      return merged.filter((page) => page.included !== false).concat(
-        merged.filter((page) => page.included === false)
-      );
+      ["pages_left", "pages_right"].forEach((side) => {
+        result[side] = result[side].filter((page) => page.included !== false).concat(
+          result[side].filter((page) => page.included === false)
+        );
+      });
+      return result;
+    }
+
+    function interleaveKneeboardSides(sides) {
+      const pages = [];
+      const left = sides.pages_left || [];
+      const right = sides.pages_right || [];
+      for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
+        if (left[i]) pages.push({ ...left[i], side: "left" });
+        if (right[i]) pages.push({ ...right[i], side: "right" });
+      }
+      return pages;
     }
 
     function kneeboardSideLabel(includedIndex) {
@@ -3549,19 +3788,27 @@
         const unchecked = rows.filter((row) => !row.querySelector(".kneeboard-order-checkbox")?.checked);
         checked.concat(unchecked).forEach((row) => list.appendChild(row));
       });
-      let includedIndex = 0;
-      readKneeboardOrderRows({ includeRows: true }).forEach((entry) => {
-        const row = entry.row;
-        const checkbox = row.querySelector(".kneeboard-order-checkbox");
-        const side = row.querySelector(".kneeboard-order-side");
-        const included = !!checkbox?.checked;
-        row.classList.toggle("is-excluded", !included);
-        if (side) {
-          side.textContent = included ? kneeboardSideLabel(includedIndex) : "EXCLUDED";
-        }
-        if (included) includedIndex += 1;
-      });
-      kneeboardOrderPages = readKneeboardOrderRows();
+      if (kneeboardOrderAirframe === "F-15") {
+        let pageIndex = 0;
+        rowsFromKneeboardList(kneeboardLeftList).forEach((row) => {
+          const included = !!row.querySelector(".kneeboard-order-checkbox")?.checked;
+          row.classList.toggle("is-excluded", !included);
+          row.querySelector(".kneeboard-order-side").textContent = included ? `PAGE ${++pageIndex}` : "EXCLUDED";
+        });
+      } else {
+        [[kneeboardLeftList, "LEFT"], [kneeboardRightList, "RIGHT"]].forEach(([list, label]) => {
+          let pageIndex = 0;
+          rowsFromKneeboardList(list).forEach((row) => {
+            const included = !!row.querySelector(".kneeboard-order-checkbox")?.checked;
+            row.classList.toggle("is-excluded", !included);
+            row.querySelector(".kneeboard-order-side").textContent = included ? `${label} ${++pageIndex}` : "EXCLUDED";
+          });
+        });
+      }
+      const sides = readKneeboardOrderSides();
+      kneeboardOrderPages = kneeboardOrderAirframe === "F-15"
+        ? interleaveKneeboardSides(sides)
+        : [...sides.pages_left.map((page) => ({ ...page, side: "left" })), ...sides.pages_right.map((page) => ({ ...page, side: "right" }))];
     }
 
     function rowsFromKneeboardList(list) {
@@ -3569,32 +3816,27 @@
       return Array.from(list.querySelectorAll("li[data-page-id]"));
     }
 
-    function readKneeboardOrderRows(options = {}) {
-      const includeRows = !!options.includeRows;
+    function readKneeboardOrderSides() {
       if (!kneeboardLeftList || !kneeboardRightList) return [];
-      let rows = [];
+      let leftRows = [];
+      let rightRows = [];
       if (kneeboardOrderAirframe === "F-15") {
-        rows = rowsFromKneeboardList(kneeboardLeftList);
+        const rows = rowsFromKneeboardList(kneeboardLeftList);
+        leftRows = rows.filter((_, index) => index % 2 === 0);
+        rightRows = rows.filter((_, index) => index % 2 === 1);
       } else {
-        const leftRows = rowsFromKneeboardList(kneeboardLeftList);
-        const rightRows = rowsFromKneeboardList(kneeboardRightList);
-        const maxRows = Math.max(leftRows.length, rightRows.length);
-        for (let i = 0; i < maxRows; i += 1) {
-          if (leftRows[i]) rows.push(leftRows[i]);
-          if (rightRows[i]) rows.push(rightRows[i]);
-        }
+        leftRows = rowsFromKneeboardList(kneeboardLeftList);
+        rightRows = rowsFromKneeboardList(kneeboardRightList);
       }
-      rows = rows.filter((row) => row.querySelector(".kneeboard-order-checkbox")?.checked).concat(
-        rows.filter((row) => !row.querySelector(".kneeboard-order-checkbox")?.checked)
-      );
-      return rows.map((row) => {
-        const item = {
+      const serializeRows = (rows) => rows.map((row) => ({
           id: row.dataset.pageId,
           included: !!row.querySelector(".kneeboard-order-checkbox")?.checked
-        };
-        if (includeRows) item.row = row;
-        return item;
-      });
+        }));
+      return { pages_left: serializeRows(leftRows), pages_right: serializeRows(rightRows) };
+    }
+
+    function readKneeboardOrderRows() {
+      return interleaveKneeboardSides(readKneeboardOrderSides());
     }
 
     function renderKneeboardOrder() {
@@ -3618,7 +3860,9 @@
         const li = document.createElement("li");
         li.draggable = true;
         li.dataset.pageId = page.id;
-        li.title = page.label || page.id;
+        li.title = page.tooltip || page.label || page.id;
+        li.classList.toggle("is-unavailable", page.available === false);
+        if (page.available === false) li.title += " (not generated)";
 
         const handle = document.createElement("span");
         handle.className = "pill-handle page";
@@ -3642,7 +3886,7 @@
         side.className = "kneeboard-order-side";
         li.appendChild(side);
 
-        if (kneeboardOrderAirframe !== "F-15" && idx % 2 === 1) {
+        if (kneeboardOrderAirframe !== "F-15" && page.side === "right") {
           kneeboardRightList.appendChild(li);
         } else {
           kneeboardLeftList.appendChild(li);
@@ -3693,10 +3937,16 @@
       try {
         const response = await fetchJSON("/api/kneeboard/order", {
           method: "POST",
-          body: JSON.stringify({ pages: readKneeboardOrderRows() })
+          body: JSON.stringify(readKneeboardOrderSides())
         });
         kneeboardOrderAirframe = response.airframe || kneeboardOrderAirframe;
-        kneeboardOrderPages = Array.isArray(response.pages) ? response.pages : [];
+        const responseSides = {
+          pages_left: Array.isArray(response.pages_left) ? response.pages_left : [],
+          pages_right: Array.isArray(response.pages_right) ? response.pages_right : []
+        };
+        kneeboardOrderPages = kneeboardOrderAirframe === "F-15"
+          ? interleaveKneeboardSides(responseSides)
+          : [...responseSides.pages_left, ...responseSides.pages_right];
         renderKneeboardOrder();
         const warnings = Array.isArray(response.warnings) ? response.warnings : [];
         warnings.forEach((warning) => log(warning));

@@ -2,7 +2,7 @@
 
 import sys
 
-hiddenimports = ["lib.pdf_worker"]
+hiddenimports = ["lib.pdf_worker", "openchart.fonts"]
 hooksconfig = {}
 if sys.platform == "win32":
     hiddenimports.append("pystray._win32")
@@ -40,7 +40,14 @@ a = Analysis(
     ['html_brief.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[
+        ('openchart/assets/*.svg', 'openchart/assets'),
+        ('openchart/assets/*.csv', 'openchart/assets'),
+        ('openchart/fonts/*.otf', 'openchart/fonts'),
+        ('openchart/fonts/LICENSE', 'openchart/fonts'),
+        ('openchart/third_party_licenses/*.md', 'openchart/third_party_licenses'),
+        ('licenses/python/openchart-OpenTaxiway-LICENSE.md', 'licenses/python'),
+    ],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig=hooksconfig,

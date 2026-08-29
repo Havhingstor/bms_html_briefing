@@ -84,6 +84,25 @@ def resolve_theater_tdf_path(
     return None
 
 
+def resolve_theater_data_root(
+    base_dir: str | Path | None,
+    theater_name: str | None,
+) -> Path | None:
+    """Return the support-data root consumed by OpenChart.
+
+    Stock theaters keep their TDF under ``Data/TerrData/TheaterDefinition`` and
+    use ``Data`` as the root. Add-on theaters keep it directly under an add-on
+    folder's ``TheaterDefinition`` directory and use that add-on folder.
+    """
+    tdf_path = resolve_theater_tdf_path(base_dir, theater_name)
+    if tdf_path is None:
+        return None
+    definition_parent = tdf_path.parent.parent
+    if definition_parent.name.casefold() == "terrdata":
+        return definition_parent.parent
+    return definition_parent
+
+
 def read_tdf_value(
     base_dir: str | Path | None,
     theater_name: str | None,
@@ -206,6 +225,7 @@ __all__ = [
     "read_theater_list",
     "read_tdf_value",
     "resolve_target_folder_from_theater",
+    "resolve_theater_data_root",
     "resolve_theater_tdf_path",
     "resolve_theater_txt_path",
 ]

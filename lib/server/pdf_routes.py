@@ -53,12 +53,32 @@ def _map_capture_required(cfg: configparser.ConfigParser, bms_cfg: BmsConfig, st
     return local_map_available(map_file)
 
 
+def _live_included_page_ids(kneeboard_order: Any) -> set[str] | None:
+    """Return checked live UI page IDs, or None for older API clients."""
+
+    if not isinstance(kneeboard_order, dict):
+        return None
+    included: set[str] = set()
+    for key in ("pages_left", "pages_right"):
+        rows = kneeboard_order.get(key)
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict) or row.get("included", True) is False:
+                continue
+            page_id = str(row.get("id") or "").strip()
+            if page_id:
+                included.add(page_id)
+    return included
+
+
 class PdfRequest(BaseModel):
     content: Optional[Dict[str, Any]] = None
     pages: Optional[Dict[str, str]] = None
     bms: Optional[Dict[str, str]] = None
     system: Optional[Dict[str, str]] = None
     theater: Optional[Dict[str, Any]] = None
+    kneeboard_order: Optional[Any] = None
     selected_package_index: Optional[int] = None
     update_change_refs: Optional[bool] = True
 
@@ -124,7 +144,7 @@ def register_pdf_routes(
         return {"status": "cancelling", "pdf_status": "cancelling"}
 
     @app.post("/api/pdf")
-    def generate_pdf(payload: PdfRequest) -> Dict[str, str]:
+    def generate_pdf(payload: PdfRequest) -> Dict[str, Any]:
         if app.state.bms_cfg is None:
             raise HTTPException(status_code=500, detail="BMS config is not loaded. Reload and try again.")
         pdf_trace = uuid.uuid4().hex[:8]
@@ -133,10 +153,16 @@ def register_pdf_routes(
         if not pdf_lock.acquire(blocking=False):
             logger.debug("PDF[%s] lock busy: rejecting concurrent request", pdf_trace)
             raise HTTPException(status_code=429, detail="PDF generation already in progress. Wait for the current export to finish.")
+        chart_lock = app.state.chart_lock
+        if not chart_lock.acquire(blocking=False):
+            pdf_lock.release()
+            logger.debug("PDF[%s] chart lock busy: rejecting request", pdf_trace)
+            raise HTTPException(status_code=429, detail="Chart generation is already in progress. Wait for it to finish.")
         logger.debug("PDF[%s] lock acquired", pdf_trace)
         app.state.pdf_busy = True
         app.state.pdf_status = "running"
         app.state.pdf_error = None
+        app.state.pdf_combined_page_count = None
         with app.state.pdf_control_lock:
             app.state.pdf_cancel_requested = False
             app.state.pdf_worker_process = None
@@ -285,9 +311,50 @@ def register_pdf_routes(
                     render_elapsed_ms,
                 )
 
+                finalize_started = time.perf_counter()
                 step_started = time.perf_counter()
-                os.replace(job.pdf_temp_path, job.pdf_final_path)
-                replace_elapsed_ms = (time.perf_counter() - step_started) * 1000.0
+                canonical_brief = app.state.chart_service.persist_brief_pdf(
+                    job.pdf_temp_path,
+                    pdf_output_dir,
+                )
+                logger.debug(
+                    "PDF[%s] briefing PDF persisted: path=%s elapsed_ms=%.1f",
+                    pdf_trace,
+                    canonical_brief,
+                    (time.perf_counter() - step_started) * 1000.0,
+                )
+                step_started = time.perf_counter()
+                try:
+                    chart_selections, chart_warnings = app.state.chart_service.current_artifacts(
+                        cfg_pdf,
+                        bms_cfg_pdf,
+                        included_page_ids=_live_included_page_ids(payload.kneeboard_order),
+                    )
+                    for warning in chart_warnings:
+                        logger_ui.warning(warning)
+                except Exception as exc:
+                    chart_selections = []
+                    logger.warning("PDF[%s] chart lookup failed: %s", pdf_trace, exc)
+                    logger_ui.warning("Charts were omitted from PDF: %s", exc)
+                logger.debug(
+                    "PDF[%s] chart artifacts resolved: count=%d elapsed_ms=%.1f",
+                    pdf_trace,
+                    len(chart_selections),
+                    (time.perf_counter() - step_started) * 1000.0,
+                )
+                step_started = time.perf_counter()
+                app.state.pdf_combined_page_count = app.state.chart_service.compose_pdf(
+                    canonical_brief,
+                    job.pdf_final_path,
+                    chart_selections,
+                )
+                logger.debug(
+                    "PDF[%s] briefing and charts composed: pages=%d elapsed_ms=%.1f",
+                    pdf_trace,
+                    app.state.pdf_combined_page_count,
+                    (time.perf_counter() - step_started) * 1000.0,
+                )
+                finalize_elapsed_ms = (time.perf_counter() - finalize_started) * 1000.0
                 app.state.last_pdf_path = str(job.pdf_final_path)
                 try:
                     pdf_size = job.pdf_final_path.stat().st_size
@@ -302,9 +369,9 @@ def register_pdf_routes(
                     (time.perf_counter() - req_started) * 1000.0,
                 )
                 logger.debug(
-                    "PDF[%s] replace done: elapsed_ms=%.1f",
+                    "PDF[%s] PDF finalization done: elapsed_ms=%.1f",
                     pdf_trace,
-                    replace_elapsed_ms,
+                    finalize_elapsed_ms,
                 )
                 logger_ui.info(
                     "PDF[%s] done: size=%dB total_elapsed_ms=%.1f",
@@ -346,9 +413,15 @@ def register_pdf_routes(
                 app.state.pdf_worker_process = None
                 app.state.pdf_current_trace = None
             app.state.pdf_busy = False
+            chart_lock.release()
             pdf_lock.release()
             logger.debug("PDF[%s] lock released", pdf_trace)
-        return {"status": "ok", "pdf_file": str(pdf_path)}
+        return {
+            "status": "ok",
+            "pdf_file": str(pdf_path),
+            "brief_pages": app.state.pdf_page_count,
+            "combined_pages": app.state.pdf_combined_page_count,
+        }
 
 
 __all__ = ["PdfRequest", "PdfClientErrorRequest", "register_pdf_routes"]

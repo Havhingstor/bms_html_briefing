@@ -7,11 +7,12 @@ from collections import deque
 from itertools import count
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from fastapi import FastAPI
 
 from lib.bms_config import BmsConfig
+from lib.charts.service import ChartService
 
 logger_ui = logging.getLogger("ui_logger")
 
@@ -39,6 +40,7 @@ def initialize_app_state(
     bms_cfg: Optional[BmsConfig],
     config_path: Path,
     theater_ini_pattern: Optional[str],
+    resolve_path: Callable[[str], Path],
 ) -> None:
     ui_handler = create_ui_log_handler()
     configure_weasyprint_logging(ui_handler)
@@ -47,6 +49,7 @@ def initialize_app_state(
     app.state.bms_cfg = bms_cfg
     app.state.config_path = config_path
     app.state.theater_ini_pattern = theater_ini_pattern
+    app.state.resolve_path = resolve_path
     app.state.ui_handler = ui_handler
     app.state.brief_mtime_ref: Optional[float] = None
     app.state.callsign_mtime_ref: Optional[float] = None
@@ -68,6 +71,11 @@ def initialize_app_state(
     app.state.pdf_cancel_requested = False
     app.state.pdf_worker_process = None
     app.state.pdf_current_trace: Optional[str] = None
+    app.state.pdf_combined_page_count: Optional[int] = None
+    app.state.chart_service = ChartService(path_resolver=resolve_path)
+    app.state.chart_lock = Lock()
+    app.state.chart_generating: set[str] = set()
+    app.state.chart_failures: Dict[str, str] = {}
     app.state.shutdown_callback = None
 
 

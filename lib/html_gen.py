@@ -39,7 +39,11 @@ BRIEFING_FCC_CYCLE_OPTIONS = {
 
 
 def page_contents_ini_to_list(conf):
-    return [[s.strip(' \n') for s in value.split(',') if s != ''] for key, value in conf['pages'].items()]
+    return [
+        [s.strip(' \n') for s in value.split(',') if s != '']
+        for key, value in conf['pages'].items()
+        if key.casefold().startswith('page') and key[4:].isdigit()
+    ]
 
 
 def _page_contents_for_render(conf, brief_summary = None):

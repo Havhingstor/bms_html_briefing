@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 
 from lib.bms_config import BmsConfig
 from lib.kneeboard_export import export_kneeboards
-from lib.kneeboard_order import save_kneeboard_order
+from lib.kneeboard_order import save_kneeboard_order, save_kneeboard_sides
 from lib.server.render_routes import PreviewRequest
 
 logger = logging.getLogger("html_brief_log")
@@ -32,7 +32,14 @@ def register_export_routes(
         )
         runtime_kneeboard_order = getattr(payload, "kneeboard_order", None) if payload else None
         if runtime_kneeboard_order:
-            save_kneeboard_order(cfg_export, runtime_kneeboard_order)
+            if isinstance(runtime_kneeboard_order, dict):
+                save_kneeboard_sides(
+                    cfg_export,
+                    runtime_kneeboard_order.get("pages_left", []),
+                    runtime_kneeboard_order.get("pages_right", []),
+                )
+            else:
+                save_kneeboard_order(cfg_export, runtime_kneeboard_order)
         try:
             bms_cfg_export = BmsConfig(
                 cfg_export,
@@ -55,7 +62,7 @@ def register_export_routes(
 
         ensure_dirs(cfg_export)
         try:
-            export_kneeboards(cfg_export, bms_cfg_export)
+            export_kneeboards(cfg_export, bms_cfg_export, chart_service=app.state.chart_service)
         except Exception as exc:
             logger.error("Failed to export kneeboards: %s", exc)
             raise HTTPException(status_code=500, detail=f"Failed to export kneeboards: {exc}")

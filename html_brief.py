@@ -30,6 +30,7 @@ from fastapi.responses import Response
 
 from lib.bms_config import BmsConfig
 from lib.server.cam_routes import register_cam_routes
+from lib.server.chart_routes import register_chart_routes
 from lib.server.config_routes import register_config_routes
 from lib.server.dtc_routes import register_dtc_routes
 from lib.server.export_routes import register_export_routes
@@ -142,7 +143,7 @@ def build_default_config() -> configparser.ConfigParser:
         "bms_available_versions": "4.37, 4.38",
         "default_airframe": "F-16",
     }
-    cfg["pages"] = {}
+    cfg["pages"] = {"charts": ""}
     return cfg
 
 
@@ -275,6 +276,7 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH, theater_ini_pattern: Opt
         bms_cfg=bms_cfg,
         config_path=config_path,
         theater_ini_pattern=theater_ini_pattern,
+        resolve_path=resolve_path,
     )
 
     register_file_routes(
@@ -314,6 +316,7 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH, theater_ini_pattern: Opt
         configure_debug_file_logging=configure_debug_file_logging,
         get_runtime_template_path=get_runtime_template_path,
     )
+    register_chart_routes(app)
     register_cam_routes(app, ensure_dirs=ensure_dirs, resolve_path=resolve_path)
     register_dtc_routes(app, static_root=STATIC_ROOT)
     register_render_routes(

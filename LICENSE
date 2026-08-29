@@ -1,6 +1,10 @@
 Falcon BMS HTML Briefing -- tool to generate HTML briefing files for Falcon BMS
 Copyright (C) 2025 wsy
 
+The Program includes the bundled OpenChart source code under these same GNU
+Affero General Public License version 3-or-later terms. Third-party components
+retain the licenses and notices provided with the distribution.
+
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details. 
