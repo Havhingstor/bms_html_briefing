@@ -27,7 +27,11 @@
 			    padding: 4px;
 			    background-color: rgba(0, 0, 0, 0.0);
 			    border: 0px solid #000;
-			    color: #0a0a0a !important;
+			    color: #000000 !important;
+			    font-family: "Map Overlay Mono", "DejaVu Sans Mono", monospace;
+			    font-size: 10px;
+			    font-weight: 700;
+			    line-height: 1;
 			    white-space: nowrap;
 			    user-select: none;
 			    pointer-events: none;
@@ -47,17 +51,15 @@
 		    pointer-events: none;
 		    box-shadow: 0 0px 0px rgba(0,0,0,0.0);
 		    text-shadow:
-		        1px 0 0 rgba(0,0,0,0.95),
-		        -1px 0 0 rgba(0,0,0,0.95),
-		        0 1px 0 rgba(0,0,0,0.95),
-		        0 -1px 0 rgba(0,0,0,0.95),
-		        1px 1px 0 rgba(0,0,0,0.75),
-		        -1px 1px 0 rgba(0,0,0,0.75),
-		        1px -1px 0 rgba(0,0,0,0.75),
-		        -1px -1px 0 rgba(0,0,0,0.75);
-		    -webkit-text-stroke: 0.35px rgba(0,0,0,0.95);
+		        0.6px 0 0 rgba(0,0,0,0.72),
+		        -0.6px 0 0 rgba(0,0,0,0.72),
+		        0 0.6px 0 rgba(0,0,0,0.72),
+		        0 -0.6px 0 rgba(0,0,0,0.72);
+		    -webkit-text-stroke: 0.3px rgba(0,0,0,0.72);
 		    font-family: "Map Overlay Mono", "DejaVu Sans Mono", monospace;
 		    font-weight: 700;
+		    font-size: 12px;
+		    line-height: 1;
 		}
 		.leaflet-tooltip-threat:before {
 		    display: none;
@@ -80,8 +82,8 @@
 		    align-items: center;
 		    justify-content: center;
 		    box-sizing: border-box;
-		    cursor: pointer;
-		    box-shadow: 0 0 0 1px rgba(0,0,0,0.35);
+		    cursor: default;
+		    box-shadow: none;
 		}
 		.threat-stpt-icon {
 		    width: 18px !important;
@@ -101,14 +103,15 @@
 		    align-items: center;
 		    justify-content: center;
 		    box-sizing: border-box;
-		    cursor: pointer;
-		    box-shadow: 0 0 0 1px rgba(0,0,0,0.35);
+		    cursor: default;
+		    box-shadow: none;
 		}
 		.weapon-target-icon {
 		    width: 20px !important;
 		    height: 20px !important;
 		    margin-left: -10px !important;
 		    margin-top: -10px !important;
+		    border-radius: 50%;
 		    border: 1px solid #000000;
 		    background: #b18cff;
 		    color: #000000;
@@ -121,8 +124,8 @@
 		    align-items: center;
 		    justify-content: center;
 		    box-sizing: border-box;
-		    cursor: pointer;
-		    box-shadow: 0 0 0 1px rgba(0,0,0,0.35);
+		    cursor: default;
+		    box-shadow: none;
 		}
 		.target-stpt-popup .leaflet-popup-content-wrapper {
 		    padding: 2px 4px;
@@ -150,15 +153,11 @@
 		    pointer-events: none;
 		    box-shadow: 0 0px 0px rgba(0,0,0,0.0);
 		    text-shadow:
-		        1px 0 0 rgba(0,0,0,0.95),
-		        -1px 0 0 rgba(0,0,0,0.95),
-		        0 1px 0 rgba(0,0,0,0.95),
-		        0 -1px 0 rgba(0,0,0,0.95),
-		        1px 1px 0 rgba(0,0,0,0.7),
-		        -1px 1px 0 rgba(0,0,0,0.7),
-		        1px -1px 0 rgba(0,0,0,0.7),
-		        -1px -1px 0 rgba(0,0,0,0.7);
-		    -webkit-text-stroke: 0.35px rgba(0,0,0,0.95);
+		        0.6px 0 0 rgba(0,0,0,0.92),
+		        -0.6px 0 0 rgba(0,0,0,0.92),
+		        0 0.6px 0 rgba(0,0,0,0.92),
+		        0 -0.6px 0 rgba(0,0,0,0.92);
+		    -webkit-text-stroke: 0.3px rgba(0,0,0,0.92);
 		    font-family: "Map Overlay Mono", "DejaVu Sans Mono", monospace;
 		    font-weight: 700;
 		    font-size: 11px;
@@ -476,30 +475,32 @@ function setBullseye(latlng) {
         redrawMapCanvasOverlay();
         return;
     }
+    for (let bearing = 0; bearing < 360; bearing += 45) {
+        L.polyline(getBullseyeSpokeLatLngs(bullseyeLatLng, bearing), {
+            color: BULLSEYE_STROKE,
+            weight: 1,
+            opacity: 1,
+            lineCap: "butt"
+        }).addTo(bullseye_overlay);
+    }
+    BULLSEYE_RING_NM.slice().reverse().forEach((radiusNm) => {
+        L.circle(bullseyeLatLng, {
+            radius: getBullseyeRadius(radiusNm),
+            color: BULLSEYE_STROKE,
+            weight: 1,
+            opacity: 1,
+            fillOpacity: 0,
+            lineCap: "butt"
+        }).addTo(bullseye_overlay);
+    });
     L.circleMarker(bullseyeLatLng, {
         radius: 5,
         color: BULLSEYE_STROKE,
         weight: 1,
         fillColor: BULLSEYE_STROKE,
-        fillOpacity: 0.85,
-        opacity: 0.85
+        fillOpacity: 1,
+        opacity: 1
     }).addTo(bullseye_overlay);
-    BULLSEYE_RING_NM.forEach((radiusNm) => {
-        L.circle(bullseyeLatLng, {
-            radius: getBullseyeRadius(radiusNm),
-            color: BULLSEYE_STROKE,
-            weight: 1,
-            opacity: 0.72,
-            fillOpacity: 0
-        }).addTo(bullseye_overlay);
-    });
-    for (let bearing = 0; bearing < 360; bearing += 45) {
-        L.polyline(getBullseyeSpokeLatLngs(bullseyeLatLng, bearing), {
-            color: BULLSEYE_STROKE,
-            weight: 1,
-            opacity: 0.72
-        }).addTo(bullseye_overlay);
-    }
 }
  
 drawings = L.layerGroup();
@@ -512,14 +513,17 @@ const MAP_STYLE = {
     flightPath: {
         color: "yellow",
         weight: 2,
+        lineCap: "butt",
         lineJoin: "round",
         haloColor: "rgba(0,0,0,0.55)",
         haloWeight: 5
     },
     flightMarker: {
-        color: "yellow",
+        color: "#000000",
+        fillColor: "#ffffff",
         fillOpacity: 1,
         radius: 8,
+        weight: 1,
         canvasFillStyle: "#ffffff",
         canvasStrokeStyle: "#000000"
     },
@@ -543,10 +547,18 @@ const MAP_STYLE = {
         fillColor: "rgba(0,0,0,0)",
         fillOpacity: 0,
         weight: 2,
+        lineCap: "butt",
         dashArray: "4 3",
         dashPattern: [4, 3]
     },
-    steerpointLine: { color: "blue", weight: 2, dashArray: "6 4", dashPattern: [6, 4] },
+    steerpointLine: {
+        color: "blue",
+        weight: 2,
+        lineCap: "butt",
+        lineJoin: "miter",
+        dashArray: "6 4",
+        dashPattern: [6, 4]
+    },
     targetSteerpoint: {
         radius: 8.8,
         color: "#ffd166",
@@ -580,10 +592,11 @@ const MAP_STYLE = {
     threatCircle: {
         color: "red",
         fillColor: "red",
-        fillOpacity: 0.06,
-        opacity: 0.5,
+        fillOpacity: 0.08,
+        opacity: 1,
         canvasFillStyle: "rgba(255,0,0,0.08)",
         weight: 2,
+        lineCap: "butt",
         dashArray: "8 5",
         dashPattern: [8, 5]
     },
@@ -627,19 +640,22 @@ const MAP_STYLE = {
 	    },
 	    otherFlightPath: {
 	        weight: 2.5,
-	        opacity: 0.96,
+	        opacity: 1,
 	        haloColor: "rgba(0,0,0,0.72)",
 	        haloWeight: 6,
+	        lineCap: "butt",
 	        lineJoin: "round"
 	    },
 	    tankerTrack: {
 	        color: "#ffffff",
 	        fillColor: "rgba(255,255,255,0)",
 	        fillOpacity: 0,
-	        opacity: 0.98,
+	        opacity: 1,
 	        weight: 2,
 	        haloColor: "rgba(0,0,0,0.74)",
-	        haloWeight: 6
+	        haloWeight: 6,
+	        lineCap: "butt",
+	        lineJoin: "miter"
 	    }
 	};
 
@@ -648,9 +664,9 @@ const MAP_EXPORT_IMAGE_TYPE = "image/jpeg";
 const MAP_EXPORT_JPEG_QUALITY = 0.82;
 
 const LEAFLET_TOOLTIP_OPTS = {
-    flightPoint: { direction: "center", permanent: true, opacity: 0.9, className: "leaflet-tooltip-fp" },
-    threat: { direction: "bottom", permanent: true, opacity: 1, className: "leaflet-tooltip-threat", offset: [0, 10] },
-    alt: { direction: "bottom", permanent: true, opacity: 1, className: "leaflet-tooltip-anchor" }
+    flightPoint: { direction: "center", permanent: true, opacity: 1, className: "leaflet-tooltip-fp" },
+    threat: { direction: "bottom", permanent: true, opacity: 1, className: "leaflet-tooltip-threat", offset: [0, 3] },
+    alt: { direction: "right", permanent: true, opacity: 1, className: "leaflet-tooltip-anchor", offset: [0, -14] }
 };
 
 const FEET_TO_METERS = 0.3048;
@@ -1254,6 +1270,23 @@ function addTooltipMarker(latlng, html, tooltipOptions) {
 function renderFlightPlanLeaflet() {
     if (!isPlayerFlightPathChecked()) return;
     const routeCoords = getFlightRouteCoords();
+    if (routeCoords.length > 0) {
+        L.polyline(routeCoords, {
+            color: MAP_STYLE.flightPath.haloColor,
+            weight: MAP_STYLE.flightPath.haloWeight,
+            opacity: 1,
+            lineCap: MAP_STYLE.flightPath.lineCap,
+            lineJoin: MAP_STYLE.flightPath.lineJoin,
+            interactive: false
+        }).addTo(drawings);
+        L.polyline(routeCoords, {
+            color: MAP_STYLE.flightPath.color,
+            weight: MAP_STYLE.flightPath.weight,
+            opacity: 1,
+            lineCap: MAP_STYLE.flightPath.lineCap,
+            lineJoin: MAP_STYLE.flightPath.lineJoin
+        }).addTo(drawings);
+    }
     getEndpointEntries().forEach((entry) => {
         const style = entry.kind === "start" ? MAP_STYLE.startMarker : MAP_STYLE.endMarker;
         L.circleMarker(entry.latlng, {
@@ -1272,17 +1305,19 @@ function renderFlightPlanLeaflet() {
             weight: MAP_STYLE.penultimateMarker.weight,
             fillColor: MAP_STYLE.penultimateMarker.fillColor,
             fillOpacity: MAP_STYLE.penultimateMarker.fillOpacity,
+            lineCap: MAP_STYLE.penultimateMarker.lineCap,
             dashArray: MAP_STYLE.penultimateMarker.dashArray
         }).addTo(drawings);
     }
     getFlightPointEntries().forEach((entry) => {
         L.circleMarker(entry.latlng, {
             color: MAP_STYLE.flightMarker.color,
+            weight: MAP_STYLE.flightMarker.weight,
+            fillColor: MAP_STYLE.flightMarker.fillColor,
             fillOpacity: MAP_STYLE.flightMarker.fillOpacity,
-            radius: MAP_STYLE.flightMarker.radius,
-            zIndexOffset: -entry.index
+            radius: MAP_STYLE.flightMarker.radius
         }).addTo(drawings).bindTooltip(
-            "<span style='color:#0a0a0a'>" + (entry.index + 1).toString() + "</span>",
+            (entry.index + 1).toString(),
             LEAFLET_TOOLTIP_OPTS.flightPoint
         ).openTooltip();
     });
@@ -1294,15 +1329,24 @@ function renderFlightPlanLeaflet() {
             fillColor: MAP_STYLE.anchorCenter.color,
             fillOpacity: 1
         }).addTo(drawings);
-        addTooltipMarker(entry.latlng, "<b>" + entry.text + "</b>", entry.tooltipOptions);
+        addTooltipMarker(entry.latlng, entry.text, entry.tooltipOptions);
     });
-    if (routeCoords.length > 0) {
-        L.polyline(routeCoords, MAP_STYLE.flightPath).addTo(drawings);
-    }
 }
 
 function renderThreatsLeaflet() {
     getThreatEntries().forEach((entry) => {
+        if (entry.radius > 0 && mapThreatCircleMode !== "none") {
+            L.circle(entry.latlng, {
+                radius: entry.radius,
+                color: MAP_STYLE.threatCircle.color,
+                fillColor: MAP_STYLE.threatCircle.fillColor,
+                fillOpacity: mapThreatCircleMode === "filled" ? MAP_STYLE.threatCircle.fillOpacity : 0,
+                opacity: MAP_STYLE.threatCircle.opacity,
+                weight: MAP_STYLE.threatCircle.weight,
+                dashArray: MAP_STYLE.threatCircle.dashArray,
+                lineCap: MAP_STYLE.threatCircle.lineCap
+            }).addTo(drawings);
+        }
         if (IS_DTC_PAGE) {
             const label = entry.number || "!";
             const marker = L.marker(entry.latlng, {
@@ -1319,27 +1363,16 @@ function renderThreatsLeaflet() {
                 className: "target-stpt-popup"
             });
             if (entry.label) {
-                addTooltipMarker(entry.latlng, "<b>" + entry.label + "</b>", LEAFLET_TOOLTIP_OPTS.threat);
+                addTooltipMarker(entry.latlng, entry.label, LEAFLET_TOOLTIP_OPTS.threat);
             }
         } else {
-            addTooltipMarker(entry.latlng, "<b>" + entry.label + "</b>", LEAFLET_TOOLTIP_OPTS.threat);
+            addTooltipMarker(entry.latlng, entry.label, LEAFLET_TOOLTIP_OPTS.threat);
             L.circleMarker(entry.latlng, {
                 radius: MAP_STYLE.threatCenter.radius,
                 color: MAP_STYLE.threatCenter.strokeColor,
                 weight: MAP_STYLE.threatCenter.strokeWidth,
                 fillColor: MAP_STYLE.threatCenter.color,
                 fillOpacity: 1
-            }).addTo(drawings);
-        }
-        if (entry.radius > 0 && mapThreatCircleMode !== "none") {
-            L.circle(entry.latlng, {
-                radius: entry.radius,
-                color: MAP_STYLE.threatCircle.color,
-                fillColor: MAP_STYLE.threatCircle.fillColor,
-                fillOpacity: mapThreatCircleMode === "filled" ? MAP_STYLE.threatCircle.fillOpacity : 0,
-                opacity: MAP_STYLE.threatCircle.opacity,
-                weight: MAP_STYLE.threatCircle.weight,
-                dashArray: MAP_STYLE.threatCircle.dashArray
             }).addTo(drawings);
         }
     });
@@ -1397,6 +1430,7 @@ function renderCamFlightOverlaysLeaflet() {
             color: MAP_STYLE.otherFlightPath.haloColor,
             weight: MAP_STYLE.otherFlightPath.haloWeight,
             opacity: MAP_STYLE.otherFlightPath.opacity,
+            lineCap: MAP_STYLE.otherFlightPath.lineCap,
             lineJoin: MAP_STYLE.otherFlightPath.lineJoin,
             interactive: false
         }).addTo(drawings);
@@ -1404,6 +1438,7 @@ function renderCamFlightOverlaysLeaflet() {
             color: entry.color,
             weight: MAP_STYLE.otherFlightPath.weight,
             opacity: MAP_STYLE.otherFlightPath.opacity,
+            lineCap: MAP_STYLE.otherFlightPath.lineCap,
             lineJoin: MAP_STYLE.otherFlightPath.lineJoin,
             interactive: false
         }).addTo(drawings);
@@ -1416,6 +1451,8 @@ function renderCamFlightOverlaysLeaflet() {
             weight: MAP_STYLE.tankerTrack.haloWeight,
             opacity: MAP_STYLE.tankerTrack.opacity,
             fillOpacity: 0,
+            lineCap: MAP_STYLE.tankerTrack.lineCap,
+            lineJoin: MAP_STYLE.tankerTrack.lineJoin,
             interactive: false
         }).addTo(drawings);
         L.polygon(tankerPolygon, {
@@ -1424,6 +1461,8 @@ function renderCamFlightOverlaysLeaflet() {
             opacity: MAP_STYLE.tankerTrack.opacity,
             fillColor: MAP_STYLE.tankerTrack.fillColor,
             fillOpacity: MAP_STYLE.tankerTrack.fillOpacity,
+            lineCap: MAP_STYLE.tankerTrack.lineCap,
+            lineJoin: MAP_STYLE.tankerTrack.lineJoin,
             interactive: false
         }).addTo(drawings);
     }
@@ -1845,10 +1884,10 @@ function renderLeafletDrawings() {
     clearLeafletDrawings();
     renderFlightPlanLeaflet();
     renderCamFlightOverlaysLeaflet();
-    renderTargetSteerpointsLeaflet();
-    renderWeaponTargetsLeaflet();
     renderThreatsLeaflet();
     renderSteerpointLinesLeaflet();
+    renderTargetSteerpointsLeaflet();
+    renderWeaponTargetsLeaflet();
     drawings.addTo(map);
 }
 
