@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import argparse
+import math
 from pathlib import Path
 
 from .geometry import build_parking_charts
 from .resvg_render import (
+    DEFAULT_RASTER_DPI,
     PdfRenderOptions,
+    render_png_pages_pdf,
     render_svg_page_png,
     render_svg_pages_pdf,
 )
 from .render import (
+    build_airport_render_context,
     output_filename,
     parking_pdf_output_filename,
     parking_output_filename,
@@ -38,8 +42,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--campaign",
         type=Path,
-        default=Path("/data/Data/Campaign/Save0.cam"),
-        help="campaign container supplying the .obj airfields",
+        default=None,
+        help=(
+            "optional campaign container supplying snapshot-specific .obj "
+            "airfields (default: use current theater support data)"
+        ),
     )
     parser.add_argument(
         "--output",
@@ -72,7 +79,26 @@ def build_parser() -> argparse.ArgumentParser:
             "(default: svg)"
         ),
     )
+    parser.add_argument(
+        "--dpi",
+        type=_positive_dpi,
+        default=DEFAULT_RASTER_DPI,
+        help=(
+            "raster resolution for PNG and PDF output "
+            f"(default: {DEFAULT_RASTER_DPI:g})"
+        ),
+    )
     return parser
+
+
+def _positive_dpi(value: str) -> float:
+    try:
+        dpi = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("DPI must be a number") from exc
+    if not math.isfinite(dpi) or dpi <= 0:
+        raise argparse.ArgumentTypeError("DPI must be a positive finite number")
+    return dpi
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -86,20 +112,21 @@ def main(argv: list[str] | None = None) -> int:
     write_svg = arguments.output_format in {"svg", "both", "all"}
     write_png = arguments.output_format in {"png", "all"}
     write_pdf = arguments.output_format in {"pdf", "both", "all"}
-    pdf_options = PdfRenderOptions()
+    pdf_options = PdfRenderOptions(dpi=arguments.dpi)
     for airport in airports:
-        ground_svg = render_airport_chart_svg(airport)
+        render_context = build_airport_render_context(airport)
+        ground_svg = render_airport_chart_svg(airport, context=render_context)
         if write_svg:
             output = _write_bytes(
                 arguments.output / output_filename(airport),
                 ground_svg,
             )
             print(output)
-        if write_png:
-            output = _write_png(
+        ground_png = render_svg_page_png(ground_svg, pdf_options) if write_png else None
+        if ground_png is not None:
+            output = _write_bytes(
                 arguments.output / _png_filename(output_filename(airport)),
-                ground_svg,
-                pdf_options,
+                ground_png,
             )
             print(output)
         if write_pdf:
@@ -107,16 +134,23 @@ def main(argv: list[str] | None = None) -> int:
                 arguments.output / _pdf_filename(output_filename(airport)),
                 (ground_svg,),
                 pdf_options,
+                png_pages=None if ground_png is None else (ground_png,),
             )
             print(output)
 
         parking_pages: list[bytes] = []
+        parking_png_pages: list[bytes] = []
         for parking_chart in build_parking_charts(
             airport.layout,
+            runways=render_context.runways,
             atc=airport.atc,
             magnetic_variation_degrees=airport.magnetic_variation_degrees,
         ):
-            parking_svg = render_airport_parking_chart_svg(airport, parking_chart)
+            parking_svg = render_airport_parking_chart_svg(
+                airport,
+                parking_chart,
+                context=render_context,
+            )
             parking_pages.append(parking_svg)
             if write_svg:
                 output = _write_bytes(
@@ -126,13 +160,14 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 print(output)
             if write_png:
-                output = _write_png(
+                parking_png = render_svg_page_png(parking_svg, pdf_options)
+                parking_png_pages.append(parking_png)
+                output = _write_bytes(
                     arguments.output
                     / _png_filename(
                         parking_output_filename(airport, parking_chart.designator)
                     ),
-                    parking_svg,
-                    pdf_options,
+                    parking_png,
                 )
                 print(output)
         if write_pdf and parking_pages:
@@ -140,23 +175,31 @@ def main(argv: list[str] | None = None) -> int:
                 arguments.output / parking_pdf_output_filename(airport),
                 parking_pages,
                 pdf_options,
+                png_pages=parking_png_pages or None,
             )
             print(output)
 
         if arguments.topo:
-            topographic_svg = render_topographic_chart_svg(airport)
+            topographic_svg = render_topographic_chart_svg(
+                airport,
+                context=render_context,
+            )
             if write_svg:
                 output = _write_bytes(
                     arguments.output / topographic_output_filename(airport),
                     topographic_svg,
                 )
                 print(output)
-            if write_png:
-                output = _write_png(
+            topographic_png = (
+                render_svg_page_png(topographic_svg, pdf_options)
+                if write_png
+                else None
+            )
+            if topographic_png is not None:
+                output = _write_bytes(
                     arguments.output
                     / _png_filename(topographic_output_filename(airport)),
-                    topographic_svg,
-                    pdf_options,
+                    topographic_png,
                 )
                 print(output)
             if write_pdf:
@@ -165,6 +208,11 @@ def main(argv: list[str] | None = None) -> int:
                     / _pdf_filename(topographic_output_filename(airport)),
                     (topographic_svg,),
                     pdf_options,
+                    png_pages=(
+                        None
+                        if topographic_png is None
+                        else (topographic_png,)
+                    ),
                 )
                 print(output)
     return 0
@@ -174,17 +222,15 @@ def _write_pdf(
     output: Path,
     svg_pages: list[bytes] | tuple[bytes, ...],
     options: PdfRenderOptions,
+    *,
+    png_pages: list[bytes] | tuple[bytes, ...] | None = None,
 ) -> Path:
-    payload, _ = render_svg_pages_pdf(svg_pages, options)
+    payload, _ = (
+        render_svg_pages_pdf(svg_pages, options)
+        if png_pages is None
+        else render_png_pages_pdf(png_pages, options)
+    )
     return _write_bytes(output, payload)
-
-
-def _write_png(
-    output: Path,
-    svg_page: bytes,
-    options: PdfRenderOptions,
-) -> Path:
-    return _write_bytes(output, render_svg_page_png(svg_page, options))
 
 
 def _write_bytes(output: Path, payload: bytes) -> Path:

@@ -10,6 +10,8 @@ from uuid import uuid4
 
 from PIL import Image
 
+from lib.progress import ProgressCallback
+
 logger = logging.getLogger("html_brief_log")
 logger_ui = logging.getLogger("ui_logger")
 
@@ -105,7 +107,13 @@ def map_tiles_current(tile_cache_dir, map_path, source_digest):
     return True
 
 
-def generate_map_tiles(map_path, tile_cache_dir, source_digest):
+def generate_map_tiles(
+    map_path,
+    tile_cache_dir,
+    source_digest,
+    *,
+    progress: ProgressCallback | None = None,
+):
     tiles_dir = os.path.join(tile_cache_dir, "tiles")
     tmp_tiles_dir = os.path.join(tile_cache_dir, f"tiles.tmp.{os.getpid()}.{uuid4().hex}")
     os.makedirs(tile_cache_dir, exist_ok=True)
@@ -126,12 +134,31 @@ def generate_map_tiles(map_path, tile_cache_dir, source_digest):
         max_native_zoom,
         expected_tiles,
     )
+    if progress is not None:
+        progress(
+            title="Preparing local map",
+            stage="map_tiles",
+            message=f"Preparing {expected_tiles:,} map tiles...",
+            note="Only done once per map. Only runs again when the source map updates.",
+            current=0,
+            total=expected_tiles,
+            can_cancel=False,
+        )
     resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+    completed_tiles = 0
+    report_interval = max(1, expected_tiles // 200)
     try:
         with Image.open(map_path) as im:
             base = im.convert("RGB")
             for zoom in range(MAP_TILE_MIN_ZOOM, max_native_zoom + 1):
                 level_size = int(MAP_LOGICAL_SIZE[0] * (2 ** zoom))
+                if progress is not None:
+                    progress(
+                        stage="map_resize",
+                        message=f"Resizing the local map for zoom level {zoom}...",
+                        current=completed_tiles,
+                        total=expected_tiles,
+                    )
                 level = base.resize((level_size, level_size), resample) if base.size != (level_size, level_size) else base.copy()
                 tile_count = (level_size + MAP_TILE_SIZE - 1) // MAP_TILE_SIZE
                 logger_ui.info(
@@ -154,6 +181,17 @@ def generate_map_tiles(map_path, tile_cache_dir, source_digest):
                         tile_dir = os.path.join(tmp_tiles_dir, str(zoom), str(x))
                         os.makedirs(tile_dir, exist_ok=True)
                         tile.save(os.path.join(tile_dir, f"{y}.png"))
+                        completed_tiles += 1
+                        if progress is not None and (
+                            completed_tiles == expected_tiles
+                            or completed_tiles % report_interval == 0
+                        ):
+                            progress(
+                                stage="map_tiles",
+                                message=f"Writing map tile {completed_tiles:,} of {expected_tiles:,}...",
+                                current=completed_tiles,
+                                total=expected_tiles,
+                            )
 
         with open(os.path.join(tmp_tiles_dir, MAP_TILE_MANIFEST), "w", encoding="utf-8") as manifest_file:
             manifest_file.write(tile_manifest_text(source_digest, tile_info))
@@ -165,6 +203,13 @@ def generate_map_tiles(map_path, tile_cache_dir, source_digest):
         if os.path.isdir(old_tiles_dir):
             shutil.rmtree(old_tiles_dir, ignore_errors=True)
         logger_ui.info("Map tile generation complete.")
+        if progress is not None:
+            progress(
+                stage="map_publish",
+                message="Local map tiles are ready.",
+                current=expected_tiles,
+                total=expected_tiles,
+            )
     finally:
         if os.path.isdir(tmp_tiles_dir):
             shutil.rmtree(tmp_tiles_dir, ignore_errors=True)
@@ -190,7 +235,14 @@ def local_map_available(map_file):
     return bool(map_file) and os.path.isfile(map_file)
 
 
-def prepare_local_map_tiles(map_file, map_dir, theater, version=None):
+def prepare_local_map_tiles(
+    map_file,
+    map_dir,
+    theater,
+    version=None,
+    *,
+    progress: ProgressCallback | None = None,
+):
     map_output_path = os.path.join(map_dir, "map.png")
     cache_slug = map_cache_slug("-".join(part for part in (str(version or "").strip(), theater) if part))
     cache_dir = os.path.join(map_dir, "theaters", cache_slug)
@@ -213,6 +265,16 @@ def prepare_local_map_tiles(map_file, map_dir, theater, version=None):
         }
 
     try:
+        if progress is not None:
+            progress(
+                title="Preparing local map",
+                stage="map_check",
+                message="Checking the local map cache...",
+                note=None,
+                current=None,
+                total=None,
+                can_cancel=False,
+            )
         source_digest = map_digest(map_file)
         cache_map_exists = (
             os.path.isfile(cache_output_path)
@@ -242,7 +304,19 @@ def prepare_local_map_tiles(map_file, map_dir, theater, version=None):
         if not map_tiles_current(cache_dir, cache_output_path, source_digest):
             with map_tile_lock(cache_dir):
                 if not map_tiles_current(cache_dir, cache_output_path, source_digest):
-                    generate_map_tiles(cache_output_path, cache_dir, source_digest)
+                    generate_map_tiles(
+                        cache_output_path,
+                        cache_dir,
+                        source_digest,
+                        progress=progress,
+                    )
+        elif progress is not None:
+            progress(
+                stage="map_cached",
+                message="Local map tiles are already prepared.",
+                current=1,
+                total=1,
+            )
         max_native_zoom = map_tile_info(cache_output_path)["max_native_zoom"]
     except Exception as e:
         logger.error(e)

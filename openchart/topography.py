@@ -606,16 +606,48 @@ def build_msa_sectors(
     first_boundary = runway_heading_magnetic - 45.0
     maxima: list[int | None] = [None] * 8
     radius_squared = radius_samples * radius_samples
+    heading = math.radians(runway_heading_true)
+    heading_cosine = math.cos(heading)
+    heading_sine = math.sin(heading)
+    center_bin = min(
+        7,
+        int(((45.0 - runway_heading_true) % 360.0) / 45.0),
+    )
     for row_index, row in enumerate(window.rows):
         north = center_row - row_index
         for column_index, elevation in enumerate(row):
             east = column_index - center_column
             if north * north + east * east > radius_squared:
                 continue
-            bearing_true = math.degrees(math.atan2(east, north)) % 360.0
-            bearing_magnetic = (bearing_true - variation) % 360.0
-            relative = (bearing_magnetic - first_boundary) % 360.0
-            bin_index = min(7, int(relative / 45.0))
+            if north == 0.0 and east == 0.0:
+                bin_index = center_bin
+            else:
+                # Rotate into the runway frame, then classify the octant with
+                # comparisons. Magnetic variation cancels from the relative
+                # angle, avoiding atan2/degrees/modulo for every terrain cell.
+                forward = north * heading_cosine + east * heading_sine
+                right = east * heading_cosine - north * heading_sine
+                if forward >= 0.0:
+                    if right >= 0.0:
+                        bin_index = (
+                            3
+                            if forward == 0.0
+                            else (1 if right < forward else 2)
+                        )
+                    else:
+                        bin_index = (
+                            7
+                            if forward == 0.0 or -right > forward
+                            else 0
+                        )
+                elif right >= 0.0:
+                    bin_index = (
+                        5
+                        if right == 0.0
+                        else (3 if right > -forward else 4)
+                    )
+                else:
+                    bin_index = 5 if -right < -forward else 6
             current = maxima[bin_index]
             if current is None or elevation > current:
                 maxima[bin_index] = elevation

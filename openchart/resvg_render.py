@@ -16,7 +16,7 @@ import resvg_py
 
 A4_WIDTH_MM = 210.0
 A4_HEIGHT_MM = 297.0
-DEFAULT_RASTER_DPI = 300.0
+DEFAULT_RASTER_DPI = 150.0
 MM_PER_INCH = 25.4
 FONT_FILENAMES = ("NimbusSans-Regular.otf", "NimbusSans-Bold.otf")
 
@@ -164,12 +164,36 @@ def render_svg_pages_pdf(
     for ordinal, payload in enumerate(svg_pages):
         _validate_svg_page(payload, ordinal)
     selected_backend = backend or inspect_pdf_backend(settings)
+    png_pages = tuple(render_svg_page_png(payload, settings) for payload in svg_pages)
+    return render_png_pages_pdf(
+        png_pages,
+        settings,
+        backend=selected_backend,
+    )
+
+
+def render_png_pages_pdf(
+    png_pages: Sequence[bytes],
+    options: PdfRenderOptions | None = None,
+    *,
+    backend: PdfBackend | None = None,
+) -> tuple[bytes, PdfBackend]:
+    """Assemble already-rendered A4 PNG pages into one ordered PDF."""
+
+    settings = validate_pdf_options(options)
+    if not png_pages:
+        raise PdfBackendError(
+            "a PDF document needs at least one PNG page",
+            code="empty_pdf_document",
+        )
+    for ordinal, payload in enumerate(png_pages):
+        _validate_png_page(payload, ordinal)
+    selected_backend = backend or inspect_pdf_backend(settings)
 
     images: list[Image.Image] = []
     try:
-        for payload in svg_pages:
-            png = render_svg_page_png(payload, settings)
-            with Image.open(BytesIO(png)) as source:
+        for payload in png_pages:
+            with Image.open(BytesIO(payload)) as source:
                 source.load()
                 images.append(source.convert("RGB"))
 
@@ -236,9 +260,22 @@ def _validate_svg_page(payload: bytes, ordinal: int) -> None:
         )
 
 
+def _validate_png_page(payload: bytes, ordinal: int) -> None:
+    if (
+        not isinstance(payload, bytes)
+        or not payload.startswith(b"\x89PNG\r\n\x1a\n")
+    ):
+        raise PdfBackendError(
+            f"PNG page {ordinal} must be complete PNG bytes",
+            code="invalid_png_output",
+        )
+
+
 __all__ = [
+    "DEFAULT_RASTER_DPI",
     "PdfRenderOptions",
     "inspect_pdf_backend",
+    "render_png_pages_pdf",
     "render_svg_page_png",
     "render_svg_pages_pdf",
 ]

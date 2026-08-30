@@ -276,15 +276,21 @@ def build_ils_approaches(
     runway_ils_frequencies: tuple[int, int, int, int],
     magnetic_variation_degrees: float | None,
     atc: AtcAirbaseData | None = None,
+    *,
+    runways: tuple[RunwayGeometry, ...] | None = None,
 ) -> tuple[IlsApproach, ...]:
     """Associate ordered Stations+Ils frequencies with authored runway ends."""
 
     runways_by_number = {
         runway.runway_number: runway
-        for runway in build_runways(
-            layout,
-            atc,
-            magnetic_variation_degrees,
+        for runway in (
+            build_runways(
+                layout,
+                atc,
+                magnetic_variation_degrees,
+            )
+            if runways is None
+            else runways
         )
     }
     atc_by_header = _match_atc_to_route_headers(layout, atc)

@@ -13,6 +13,7 @@ from .geometry import (
     ArrestingSystem,
     NumberedParkingPosition,
     ParkingChart,
+    ParkingPosition,
     Point,
     RunwayGeometry,
     TaxiwayLabel,
@@ -194,6 +195,41 @@ class MapTransform:
 
 
 @dataclass(frozen=True)
+class AirportRenderContext:
+    """Airport geometry shared by every ground and parking chart page."""
+
+    airport: AirportData
+    runways: tuple[RunwayGeometry, ...]
+    arresting_systems: tuple[ArrestingSystem, ...]
+    routes: tuple[tuple[Point, Point], ...]
+    taxiway_surfaces: tuple[TaxiwaySurface, ...]
+    building_shapes: tuple[BuildingShape, ...]
+    ground_parking: tuple[ParkingPosition, ...]
+    taxiway_labels: tuple[TaxiwayLabel, ...]
+
+
+def build_airport_render_context(airport: AirportData) -> AirportRenderContext:
+    """Prepare immutable geometry for all chart pages of one airport."""
+
+    if not isinstance(airport, AirportData):
+        raise TypeError("airport must be AirportData")
+    return AirportRenderContext(
+        airport=airport,
+        runways=build_runways(
+            airport.layout,
+            airport.atc,
+            airport.magnetic_variation_degrees,
+        ),
+        arresting_systems=build_arresting_systems(airport.layout),
+        routes=build_route_edges(airport.layout),
+        taxiway_surfaces=build_taxiway_surfaces(airport),
+        building_shapes=build_building_shapes(airport),
+        ground_parking=build_parking_positions(airport.layout),
+        taxiway_labels=build_taxiway_labels(airport.layout),
+    )
+
+
+@dataclass(frozen=True)
 class ParkingLabelPlacement:
     position: NumberedParkingPosition
     anchor_x: float
@@ -246,39 +282,62 @@ def render_airport_parking_chart(
     )
 
 
-def render_airport_chart_svg(airport: AirportData) -> bytes:
+def render_airport_chart_svg(
+    airport: AirportData,
+    *,
+    context: AirportRenderContext | None = None,
+) -> bytes:
     """Return a self-contained unnumbered airport ground-chart SVG."""
 
-    return _render_airport_chart_svg(airport, parking_chart=None)
+    return _render_airport_chart_svg(
+        airport,
+        parking_chart=None,
+        context=_resolve_airport_render_context(airport, context),
+    )
 
 
 def render_airport_parking_chart_svg(
     airport: AirportData,
     parking_chart: ParkingChart,
+    *,
+    context: AirportRenderContext | None = None,
 ) -> bytes:
     """Return one self-contained runway-end parking-chart SVG."""
 
-    return _render_airport_chart_svg(airport, parking_chart=parking_chart)
+    return _render_airport_chart_svg(
+        airport,
+        parking_chart=parking_chart,
+        context=_resolve_airport_render_context(airport, context),
+    )
+
+
+def _resolve_airport_render_context(
+    airport: AirportData,
+    context: AirportRenderContext | None,
+) -> AirportRenderContext:
+    selected = context or build_airport_render_context(airport)
+    if not isinstance(selected, AirportRenderContext):
+        raise TypeError("context must be AirportRenderContext or None")
+    if selected.airport is not airport:
+        raise ValueError("render context belongs to a different AirportData instance")
+    return selected
 
 
 def _render_airport_chart_svg(
     airport: AirportData,
     *,
     parking_chart: ParkingChart | None,
+    context: AirportRenderContext,
 ) -> bytes:
     """Render a deterministic ground or runway-end parking SVG payload."""
 
-    runways = build_runways(
-        airport.layout,
-        airport.atc,
-        airport.magnetic_variation_degrees,
-    )
-    arresting_systems = build_arresting_systems(airport.layout)
-    routes = build_route_edges(airport.layout)
-    taxiway_surfaces = build_taxiway_surfaces(airport)
-    building_shapes = build_building_shapes(airport)
-    ground_parking = build_parking_positions(airport.layout)
-    taxiway_labels = build_taxiway_labels(airport.layout)
+    runways = context.runways
+    arresting_systems = context.arresting_systems
+    routes = context.routes
+    taxiway_surfaces = context.taxiway_surfaces
+    building_shapes = context.building_shapes
+    ground_parking = context.ground_parking
+    taxiway_labels = context.taxiway_labels
     map_parking = (
         ground_parking
         if parking_chart is None

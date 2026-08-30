@@ -5,6 +5,7 @@ from lib.brief_render import build_brief_render_context
 from lib.bms_paths import callsign_ini_path
 from lib.map_sources import map_selection as select_map, map_source_options as get_map_source_options
 from lib.map_tiles import local_map_available, prepare_local_map_tiles, resolve_local_map_file
+from lib.progress import ProgressCallback
 from lib.parsers.parse_briefing_txt import Briefing
 from lib.parsers.parse_callsign_ini import Callsign_ini
 
@@ -103,6 +104,7 @@ def generate_html_file(
     template_name = "index.html",
     pdf_mode = False,
     pdf_artifacts = None,
+    progress: ProgressCallback | None = None,
 ):
     if getattr(sys, 'frozen', False):
         script_dir = os.path.dirname(sys.executable)
@@ -145,9 +147,20 @@ def generate_html_file(
                 map_dir,
                 bms_conf.theater,
                 getattr(bms_conf, "version", None),
+                progress=progress,
             )
             map_tile_url_template = local_map_tiles["map_tile_url_template"]
             map_tile_max_native_zoom = local_map_tiles["map_tile_max_native_zoom"]
+
+    if progress is not None:
+        progress(
+            title="Preparing briefing",
+            stage="brief_render",
+            message="Rendering the briefing preview...",
+            note=None,
+            current=None,
+            total=None,
+        )
 
     templates_dir = os.path.join(script_dir, 'templates')
 

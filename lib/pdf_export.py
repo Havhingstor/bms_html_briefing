@@ -510,6 +510,7 @@ def render_pdf_isolated(
     *,
     on_process_start: Callable[[PdfWorkerProcess], None] | None = None,
     on_process_done: Callable[[], None] | None = None,
+    on_progress: Callable[[str], None] | None = None,
     is_cancel_requested: Callable[[], bool] | None = None,
     process_start_timeout_seconds: float = PDF_WORKER_START_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
@@ -542,6 +543,8 @@ def render_pdf_isolated(
             timeout_seconds,
         )
         last_stage = "process_started"
+        if on_progress is not None:
+            on_progress(last_stage)
         ready_stages = {"import_weasyprint_done", "render_start", "render_done", "write_pdf_start", "write_pdf_done"}
         bootstrap_deadline = time.monotonic() + process_start_timeout_seconds
         while process.is_alive() and last_stage not in ready_stages:
@@ -559,7 +562,10 @@ def render_pdf_isolated(
                 _stop_worker_process(process, reason=f"{process_start_timeout_seconds}s bootstrap timeout")
                 raise PdfRenderTimeout(process_start_timeout_seconds, last_stage, process.pid)
             process.join(min(0.1, remaining))
-            last_stage = _read_worker_progress(progress_path, last_stage)
+            next_stage = _read_worker_progress(progress_path, last_stage)
+            if next_stage != last_stage and on_progress is not None:
+                on_progress(next_stage)
+            last_stage = next_stage
 
         deadline = time.monotonic() + timeout_seconds
         while process.is_alive():
@@ -569,8 +575,14 @@ def render_pdf_isolated(
             if remaining <= 0:
                 break
             process.join(min(0.25, remaining))
-            last_stage = _read_worker_progress(progress_path, last_stage)
-        last_stage = _read_worker_progress(progress_path, last_stage)
+            next_stage = _read_worker_progress(progress_path, last_stage)
+            if next_stage != last_stage and on_progress is not None:
+                on_progress(next_stage)
+            last_stage = next_stage
+        next_stage = _read_worker_progress(progress_path, last_stage)
+        if next_stage != last_stage and on_progress is not None:
+            on_progress(next_stage)
+        last_stage = next_stage
         if is_cancel_requested is not None and is_cancel_requested():
             logger.warning(
                 "WeasyPrint worker cancellation requested: pid=%s last_stage=%s",

@@ -36,6 +36,7 @@ from lib.server.dtc_routes import register_dtc_routes
 from lib.server.export_routes import register_export_routes
 from lib.server.file_routes import register_file_routes
 from lib.server.pdf_routes import register_pdf_routes
+from lib.server.progress_routes import register_progress_routes
 from lib.server.render_routes import (
     register_render_routes,
 )
@@ -316,6 +317,7 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH, theater_ini_pattern: Opt
         configure_debug_file_logging=configure_debug_file_logging,
         get_runtime_template_path=get_runtime_template_path,
     )
+    register_progress_routes(app)
     register_chart_routes(app)
     register_cam_routes(app, ensure_dirs=ensure_dirs, resolve_path=resolve_path)
     register_dtc_routes(app, static_root=STATIC_ROOT)

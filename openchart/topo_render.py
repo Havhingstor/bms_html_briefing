@@ -20,6 +20,7 @@ from .geometry import (
 )
 from .model_geometry import TaxiwaySurface, build_taxiway_surfaces
 from .render import (
+    AirportRenderContext,
     BOTTOM_ANNOTATION_Y,
     CONTENT_INSET,
     FRAME_INSET,
@@ -103,6 +104,7 @@ ELEVATION_PALETTE = (
     (173, 101, 64),   # 4,500–4,999 ft.
     (158, 85, 54),    # 5,000 ft and above.
 )
+ELEVATION_PNG_COMPRESSION_LEVEL = 6
 
 
 def render_topographic_chart(
@@ -132,6 +134,7 @@ def render_topographic_chart_svg(
     size_nm: float = DEFAULT_AREA_SIZE_NM,
     elevation_interval_ft: int = DEFAULT_ELEVATION_INTERVAL_FT,
     sample_stride: int = DEFAULT_SAMPLE_STRIDE,
+    context: AirportRenderContext | None = None,
 ) -> bytes:
     """Return a self-contained A4 airport-centered topographic SVG."""
 
@@ -163,7 +166,25 @@ def render_topographic_chart_svg(
             f"{airport.name}: height and land-cover windows have different dimensions"
         )
     peaks = build_terrain_peaks(window)
-    taxiway_surfaces = build_taxiway_surfaces(airport)
+    if context is None:
+        runways = build_runways(
+            airport.layout,
+            airport.atc,
+            airport.magnetic_variation_degrees,
+        )
+        routes = build_route_edges(airport.layout)
+        taxiway_surfaces = build_taxiway_surfaces(airport)
+    else:
+        if not isinstance(context, AirportRenderContext):
+            raise TypeError("context must be AirportRenderContext or None")
+        if context.airport is not airport:
+            raise ValueError(
+                "render context belongs to a different AirportData instance"
+            )
+        runways = context.runways
+        routes = context.routes
+        taxiway_surfaces = context.taxiway_surfaces
+    ils_approaches = _airport_ils_approaches(airport, runways)
 
     root = ET.Element(
         f"{{{SVG_NS}}}svg",
@@ -256,10 +277,10 @@ def render_topographic_chart_svg(
     )
     _elevation_shading(map_group, window, elevation_interval_ft, land_cover)
     range_ring = _airport_range_ring(map_group, airport, window)
-    _ils_feathers(map_group, airport, window)
+    _ils_feathers(map_group, airport, window, ils_approaches)
     peak_boxes = _terrain_peaks(map_group, window, peaks)
     _airport_range_ring_label(*range_ring, peak_boxes)
-    _runways(map_group, airport, window)
+    _runways(map_group, airport, window, runways)
     navigation_label_boxes = _topographic_navigation_aids(
         map_group,
         airport,
@@ -269,7 +290,7 @@ def render_topographic_chart_svg(
     _scale_bar(map_group, size_nm)
     _elevation_scale(map_group, size_nm, elevation_interval_ft)
     _north_indicator(map_group, airport)
-    _msa_indicator(map_group, airport, window)
+    _msa_indicator(map_group, airport, window, runways)
     _element(
         "rect",
         {
@@ -285,9 +306,15 @@ def render_topographic_chart_svg(
         },
         root,
     )
-    _airport_minimap(root, airport, taxiway_surfaces)
+    _airport_minimap(
+        root,
+        airport,
+        taxiway_surfaces,
+        runways,
+        routes,
+    )
     _communications(root, airport)
-    _ils_frequency_row(root, airport)
+    _ils_frequency_row(root, airport, ils_approaches)
     _footer(root, airport)
 
     ET.indent(root, space="  ")
@@ -400,11 +427,14 @@ def _communications(root: ET.Element, airport: AirportData) -> None:
             _element("text", attributes, item, frequency)
 
 
-def _ils_frequency_row(root: ET.Element, airport: AirportData) -> None:
+def _ils_frequency_row(
+    root: ET.Element,
+    airport: AirportData,
+    approaches: tuple[IlsApproach, ...],
+) -> None:
     station = airport.station
     if station is None:
         return
-    approaches = _airport_ils_approaches(airport)
     group = _element(
         "g",
         {"id": "topographic-ils", "data-layout": "4x1"},
@@ -481,7 +511,10 @@ def _ils_frequency(value: int) -> str:
     return f"{value / 100.0:.2f}"
 
 
-def _airport_ils_approaches(airport: AirportData) -> tuple[IlsApproach, ...]:
+def _airport_ils_approaches(
+    airport: AirportData,
+    runways: tuple[RunwayGeometry, ...],
+) -> tuple[IlsApproach, ...]:
     if airport.station is None:
         return ()
     return build_ils_approaches(
@@ -489,6 +522,7 @@ def _airport_ils_approaches(airport: AirportData) -> tuple[IlsApproach, ...]:
         airport.station.runway_ils_frequencies,
         airport.magnetic_variation_degrees,
         airport.atc,
+        runways=runways,
     )
 
 
@@ -522,7 +556,7 @@ def _elevation_png_data_url(
     interval_ft: int,
     land_cover: LandCoverWindow | None = None,
 ) -> str:
-    compressor = zlib.compressobj(level=9)
+    compressor = zlib.compressobj(level=ELEVATION_PNG_COMPRESSION_LEVEL)
     compressed_rows: list[bytes] = []
     for row_index, row in enumerate(window.rows):
         cover_row = None if land_cover is None else land_cover.rows[row_index]
@@ -582,13 +616,10 @@ def _runways(
     parent: ET.Element,
     airport: AirportData,
     window: ElevationWindow,
+    runways: tuple[RunwayGeometry, ...],
 ) -> None:
     group = _element("g", {"id": "airport-runways"}, parent)
-    for runway in build_runways(
-        airport.layout,
-        airport.atc,
-        airport.magnetic_variation_degrees,
-    ):
+    for runway in runways:
         start = _layout_to_grid(airport, window, runway.start)
         end = _layout_to_grid(airport, window, runway.end)
         start_screen = _screen_point(window, start)
@@ -747,6 +778,7 @@ def _ils_feathers(
     parent: ET.Element,
     airport: AirportData,
     window: ElevationWindow,
+    approaches: tuple[IlsApproach, ...],
 ) -> None:
     group = _element("g", {"id": "ils-feathers"}, parent)
     length = ILS_FEATHER_LENGTH_NM * FEET_PER_NAUTICAL_MILE
@@ -761,7 +793,7 @@ def _ils_feathers(
             f"{_number(x)},{_number(y)}" for x, y in coordinates
         )
 
-    for approach in _airport_ils_approaches(airport):
+    for approach in approaches:
         angle = math.radians(approach.course_true)
         inbound_x = math.sin(angle)
         inbound_y = math.cos(angle)
@@ -1425,12 +1457,8 @@ def _msa_indicator(
     parent: ET.Element,
     airport: AirportData,
     window: ElevationWindow,
+    runways: tuple[RunwayGeometry, ...],
 ) -> None:
-    runways = build_runways(
-        airport.layout,
-        airport.atc,
-        airport.magnetic_variation_degrees,
-    )
     if not runways:
         return
     primary = max(
@@ -1606,13 +1634,9 @@ def _airport_minimap(
     root: ET.Element,
     airport: AirportData,
     taxiway_surfaces: tuple[TaxiwaySurface, ...],
+    runways: tuple[RunwayGeometry, ...],
+    routes: tuple[tuple[Point, Point], ...],
 ) -> None:
-    runways = build_runways(
-        airport.layout,
-        airport.atc,
-        airport.magnetic_variation_degrees,
-    )
-    routes = build_route_edges(airport.layout)
     towers = tuple(
         Point(feature.offset_x, feature.offset_y)
         for feature in airport.layout.features

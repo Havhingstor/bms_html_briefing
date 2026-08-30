@@ -13,6 +13,7 @@ from fastapi import FastAPI
 
 from lib.bms_config import BmsConfig
 from lib.charts.service import ChartService
+from lib.progress import OperationProgressRegistry
 
 logger_ui = logging.getLogger("ui_logger")
 
@@ -71,11 +72,13 @@ def initialize_app_state(
     app.state.pdf_cancel_requested = False
     app.state.pdf_worker_process = None
     app.state.pdf_current_trace: Optional[str] = None
+    app.state.pdf_current_operation_id: Optional[str] = None
     app.state.pdf_combined_page_count: Optional[int] = None
     app.state.chart_service = ChartService(path_resolver=resolve_path)
     app.state.chart_lock = Lock()
     app.state.chart_generating: set[str] = set()
     app.state.chart_failures: Dict[str, str] = {}
+    app.state.progress_registry = OperationProgressRegistry()
     app.state.shutdown_callback = None
 
 

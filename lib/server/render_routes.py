@@ -24,6 +24,7 @@ class PreviewRequest(BaseModel):
     kneeboard_order: Optional[Any] = None
     selected_package_index: Optional[int] = None
     update_change_refs: Optional[bool] = True
+    operation_id: Optional[str] = None
 
 
 def resolve_brief_render_state(
@@ -73,7 +74,15 @@ def register_render_routes(
 
     @app.post("/api/generate")
     def generate(payload: PreviewRequest = None) -> Dict[str, str]:
+        operation_id = getattr(payload, "operation_id", None) if payload else None
+        progress = app.state.progress_registry.begin(
+            operation_id,
+            operation="preview",
+            title="Preparing briefing",
+            message="Checking briefing inputs...",
+        )
         if app.state.bms_cfg is None:
+            app.state.progress_registry.fail(operation_id, "BMS config is not loaded.")
             raise HTTPException(status_code=500, detail="BMS config is not loaded. Reload and try again.")
         overrides = payload.model_dump(exclude_none=True) if payload else {}
         cfg_generate = copy_config_with_overrides(
@@ -88,6 +97,7 @@ def register_render_routes(
                 theater_ini_pattern=app.state.theater_ini_pattern,
             )
         except Exception as exc:
+            app.state.progress_registry.fail(operation_id, f"Generate config error: {exc}")
             logger.error("Failed to build generate BMS config: %s", exc)
             raise HTTPException(status_code=500, detail=f"Generate config error: {exc}")
         ensure_dirs(cfg_generate)
@@ -103,18 +113,28 @@ def register_render_routes(
                 "index",
                 brief_summary=brief_summary,
                 selected_package_index=selected_package_index,
+                progress=progress,
             )
             output_file = resolve_path(cfg_generate["system"]["output_dir"]) / "index.html"
             app.state.last_brief_path = str(output_file)
             _update_brief_mtime_state(app, bms_cfg_generate)
             app.state.brief_pages_ref = len(page_contents_ini_to_list(cfg_generate))
         except Exception as exc:
+            app.state.progress_registry.fail(operation_id, f"Failed to generate HTML: {exc}")
             logger.error("Failed to generate HTML: %s", exc)
             raise HTTPException(status_code=500, detail=f"Failed to generate HTML: {exc}")
+        app.state.progress_registry.complete(operation_id, "Briefing preview is ready.")
         return {"status": "ok", "output_file": str(output_file)}
 
     @app.post("/api/preview")
     def preview(payload: PreviewRequest) -> Dict[str, str]:
+        operation_id = payload.operation_id
+        progress = app.state.progress_registry.begin(
+            operation_id,
+            operation="preview",
+            title="Preparing briefing",
+            message="Checking briefing inputs...",
+        )
         cfg_preview = copy_config_with_overrides(
             app.state.cfg,
             pages=payload.pages,
@@ -127,6 +147,7 @@ def register_render_routes(
                 theater_ini_pattern=app.state.theater_ini_pattern,
             )
         except Exception as exc:
+            app.state.progress_registry.fail(operation_id, f"Preview config error: {exc}")
             logger.error("Failed to build preview BMS config: %s", exc)
             raise HTTPException(status_code=500, detail=f"Preview config error: {exc}")
         ensure_dirs(cfg_preview)
@@ -142,6 +163,7 @@ def register_render_routes(
                 "index",
                 brief_summary=brief_summary,
                 selected_package_index=selected_package_index,
+                progress=progress,
             )
             output_file = resolve_path(cfg_preview["system"]["output_dir"]) / "index.html"
             app.state.last_brief_path = str(output_file)
@@ -149,8 +171,10 @@ def register_render_routes(
                 _update_brief_mtime_state(app, bms_cfg_preview)
             app.state.brief_pages_ref = len(page_contents_ini_to_list(cfg_preview))
         except Exception as exc:
+            app.state.progress_registry.fail(operation_id, f"Failed to generate HTML: {exc}")
             logger.error("Failed to generate preview HTML: %s", exc)
             raise HTTPException(status_code=500, detail=f"Failed to generate HTML: {exc}")
+        app.state.progress_registry.complete(operation_id, "Briefing preview is ready.")
         return {"status": "ok", "output_file": str(output_file)}
 
 

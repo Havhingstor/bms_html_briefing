@@ -24,6 +24,13 @@ def register_export_routes(
 
     @app.post("/api/export")
     def export(payload: PreviewRequest = None) -> Dict[str, str]:
+        operation_id = getattr(payload, "operation_id", None) if payload else None
+        progress = app.state.progress_registry.begin(
+            operation_id,
+            operation="kneeboard",
+            title="Exporting kneeboard",
+            message="Resolving kneeboard pages...",
+        )
         cfg_export = copy_config_with_overrides(
             app.state.cfg,
             pages=getattr(payload, "pages", None),
@@ -46,6 +53,7 @@ def register_export_routes(
                 theater_ini_pattern=app.state.theater_ini_pattern,
             )
         except Exception as exc:
+            app.state.progress_registry.fail(operation_id, f"Export config error: {exc}")
             logger.error("Failed to build export BMS config: %s", exc)
             raise HTTPException(status_code=500, detail=f"Export config error: {exc}")
 
@@ -62,8 +70,14 @@ def register_export_routes(
 
         ensure_dirs(cfg_export)
         try:
-            export_kneeboards(cfg_export, bms_cfg_export, chart_service=app.state.chart_service)
+            export_kneeboards(
+                cfg_export,
+                bms_cfg_export,
+                chart_service=app.state.chart_service,
+                progress=progress,
+            )
         except Exception as exc:
+            app.state.progress_registry.fail(operation_id, f"Kneeboard export failed: {exc}")
             logger.error("Failed to export kneeboards: %s", exc)
             raise HTTPException(status_code=500, detail=f"Failed to export kneeboards: {exc}")
         theater_name = getattr(bms_cfg_export, "theater", "")
@@ -71,6 +85,7 @@ def register_export_routes(
         target_folder = ""
         if theater_name and theater_cfg and theater_cfg.has_section(theater_name):
             target_folder = theater_cfg[theater_name].get("target_folder", "")
+        app.state.progress_registry.complete(operation_id, "Kneeboard export is ready.")
         return {"status": "ok", "target_folder": target_folder}
 
 

@@ -81,6 +81,7 @@ class PdfRequest(BaseModel):
     kneeboard_order: Optional[Any] = None
     selected_package_index: Optional[int] = None
     update_change_refs: Optional[bool] = True
+    operation_id: Optional[str] = None
 
 
 class PdfClientErrorRequest(BaseModel):
@@ -130,7 +131,16 @@ def register_pdf_routes(
             app.state.pdf_status = "cancelling"
             app.state.pdf_error = None
             trace = app.state.pdf_current_trace
+            operation_id = app.state.pdf_current_operation_id
             process = app.state.pdf_worker_process
+
+        app.state.progress_registry.update(
+            operation_id,
+            status="cancelling",
+            stage="cancelling",
+            message="Stopping PDF generation...",
+            can_cancel=False,
+        )
 
         pid = getattr(process, "pid", None)
         if process is not None:
@@ -167,6 +177,36 @@ def register_pdf_routes(
             app.state.pdf_cancel_requested = False
             app.state.pdf_worker_process = None
             app.state.pdf_current_trace = pdf_trace
+            app.state.pdf_current_operation_id = payload.operation_id
+        operation_id = payload.operation_id
+        progress = app.state.progress_registry.begin(
+            operation_id,
+            operation="pdf",
+            title="Generating PDF",
+            message="Preparing briefing content...",
+            can_cancel=True,
+        )
+
+        def report_worker_stage(stage: str) -> None:
+            if progress is None:
+                return
+            messages = {
+                "process_started": "Starting the PDF renderer...",
+                "worker_start": "Starting the PDF renderer...",
+                "import_weasyprint_start": "Loading the PDF renderer...",
+                "import_weasyprint_done": "PDF renderer loaded.",
+                "render_start": "Rendering the PDF layout...",
+                "render_done": "PDF layout rendered.",
+                "write_pdf_start": "Writing the PDF file...",
+                "write_pdf_done": "PDF file written.",
+            }
+            progress(
+                stage=f"pdf_{stage}",
+                message=messages.get(stage, "Generating PDF..."),
+                current=None,
+                total=None,
+                can_cancel=True,
+            )
         pdf_path: Optional[Path] = None
         try:
             payload_stats = content_payload_stats(payload.content)
@@ -228,6 +268,13 @@ def register_pdf_routes(
                 )
 
                 step_started = time.perf_counter()
+                if progress is not None:
+                    progress(
+                        stage="pdf_assets",
+                        message="Preparing images and briefing content...",
+                        current=None,
+                        total=None,
+                    )
                 materialized_content, pdf_artifacts = materialize_pdf_artifacts(payload.content or {}, job)
                 logger.debug(
                     "PDF[%s] artifacts materialized: count=%d elapsed_ms=%.1f",
@@ -236,6 +283,13 @@ def register_pdf_routes(
                     (time.perf_counter() - step_started) * 1000.0,
                 )
                 step_started = time.perf_counter()
+                if progress is not None:
+                    progress(
+                        stage="pdf_html",
+                        message="Building the printable briefing...",
+                        current=None,
+                        total=None,
+                    )
                 render_print_html(
                     cfg=cfg_pdf_render,
                     bms_cfg=bms_cfg_pdf,
@@ -283,6 +337,7 @@ def register_pdf_routes(
                     pdf_render_timeout_seconds,
                     on_process_start=set_pdf_worker,
                     on_process_done=clear_pdf_worker,
+                    on_progress=report_worker_stage,
                     is_cancel_requested=is_pdf_cancel_requested,
                 )
                 render_elapsed_ms = float(worker_result.get("render_elapsed_ms", 0.0))
@@ -313,6 +368,14 @@ def register_pdf_routes(
 
                 finalize_started = time.perf_counter()
                 step_started = time.perf_counter()
+                if progress is not None:
+                    progress(
+                        stage="pdf_finalize",
+                        message="Finalizing the PDF...",
+                        current=None,
+                        total=None,
+                        can_cancel=False,
+                    )
                 canonical_brief = app.state.chart_service.persist_brief_pdf(
                     job.pdf_temp_path,
                     pdf_output_dir,
@@ -343,6 +406,14 @@ def register_pdf_routes(
                     (time.perf_counter() - step_started) * 1000.0,
                 )
                 step_started = time.perf_counter()
+                if progress is not None:
+                    progress(
+                        stage="pdf_compose",
+                        message="Adding selected charts to the PDF...",
+                        current=None,
+                        total=None,
+                        can_cancel=False,
+                    )
                 app.state.pdf_combined_page_count = app.state.chart_service.compose_pdf(
                     canonical_brief,
                     job.pdf_final_path,
@@ -379,17 +450,20 @@ def register_pdf_routes(
                     pdf_size,
                     (time.perf_counter() - req_started) * 1000.0,
                 )
+                app.state.progress_registry.complete(operation_id, "PDF is ready.")
         except HTTPException as exc:
             if getattr(exc, "status_code", None) != 429:
                 detail = exc.detail if isinstance(exc.detail, str) else repr(exc.detail)
                 app.state.pdf_status = "error"
                 app.state.pdf_error = detail
                 app.state.pdf_overflow = None
+                app.state.progress_registry.fail(operation_id, detail)
             raise
         except PdfRenderTimeout as exc:
             app.state.pdf_status = "timeout"
             app.state.pdf_error = str(exc)
             app.state.pdf_overflow = None
+            app.state.progress_registry.fail(operation_id, f"PDF generation timed out: {exc}")
             logger.exception("PDF[%s] timed out after %.1fms", pdf_trace, (time.perf_counter() - req_started) * 1000.0)
             logger_ui.error("PDF[%s] timed out; no PDF was generated: %s", pdf_trace, exc)
             raise HTTPException(status_code=504, detail=f"PDF generation timed out; no PDF was generated: {exc}")
@@ -397,6 +471,13 @@ def register_pdf_routes(
             app.state.pdf_status = "cancelled"
             app.state.pdf_error = str(exc)
             app.state.pdf_overflow = None
+            app.state.progress_registry.update(
+                operation_id,
+                status="cancelled",
+                stage="cancelled",
+                message="PDF generation cancelled.",
+                can_cancel=False,
+            )
             logger.warning("PDF[%s] cancelled after %.1fms: %s", pdf_trace, (time.perf_counter() - req_started) * 1000.0, exc)
             logger_ui.warning("PDF[%s] cancelled; no PDF was generated", pdf_trace)
             raise HTTPException(status_code=499, detail=f"PDF generation cancelled; no PDF was generated: {exc}")
@@ -404,6 +485,7 @@ def register_pdf_routes(
             app.state.pdf_status = "error"
             app.state.pdf_error = str(exc)
             app.state.pdf_overflow = None
+            app.state.progress_registry.fail(operation_id, f"PDF generation failed: {exc}")
             logger.exception("PDF[%s] failed after %.1fms", pdf_trace, (time.perf_counter() - req_started) * 1000.0)
             logger_ui.error("PDF[%s] failed: %s", pdf_trace, exc)
             raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {exc}")
@@ -412,6 +494,7 @@ def register_pdf_routes(
                 app.state.pdf_cancel_requested = False
                 app.state.pdf_worker_process = None
                 app.state.pdf_current_trace = None
+                app.state.pdf_current_operation_id = None
             app.state.pdf_busy = False
             chart_lock.release()
             pdf_lock.release()

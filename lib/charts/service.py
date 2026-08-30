@@ -19,6 +19,7 @@ from lib.bms_paths import callsign_ini_path
 from lib.parsers.parse_briefing_txt import Briefing
 from lib.parsers.parse_callsign_ini import Callsign_ini
 from lib.theater_paths import resolve_theater_data_root
+from lib.progress import ProgressCallback
 
 from .models import (
     ALL_SELECTIONS,
@@ -419,6 +420,7 @@ class ChartService:
         *,
         force: bool = False,
         prepared_plan: ChartPlan | None = None,
+        progress: ProgressCallback | None = None,
     ) -> dict[str, Any]:
         # Explicit generation must parse current theater data. The route may
         # supply the fresh plan it already built for progress reporting.
@@ -432,14 +434,49 @@ class ChartService:
         warnings = list(plan.warnings)
 
         source = plan.source
+        target_count = len(plan.targets)
+        if progress is not None:
+            progress(
+                title="Generating charts",
+                stage="chart_generate",
+                message=(
+                    f"Preparing to generate {target_count} chart{'s' if target_count != 1 else ''}..."
+                    if target_count
+                    else "No chart artifacts need generation."
+                ),
+                note="Only done once per chart. Only runs again when the source data or chart generator updates.",
+                current=0 if target_count else None,
+                total=target_count or None,
+                can_cancel=False,
+            )
 
-        for target in plan.targets:
+        for target_index, target in enumerate(plan.targets):
+            if progress is not None:
+                progress(
+                    stage="chart_generate",
+                    message=(
+                        f"Generating {target.kind.value} chart for {target.display_name} "
+                        f"({target_index + 1} of {target_count})..."
+                    ),
+                    current=target_index,
+                    total=target_count,
+                )
             previous = artifacts.get(target.id)
             if not force and _artifact_state(plan, target, previous) == "generated":
                 previous["roles"] = [role.value for role in target.roles]
                 skipped.append(target.id)
+                if progress is not None:
+                    progress(
+                        message=(
+                            f"Chart {target_index + 1} of {target_count} is already current."
+                        ),
+                        current=target_index + 1,
+                        total=target_count,
+                    )
                 continue
             if source is None:
+                if progress is not None:
+                    progress(current=target_index + 1, total=target_count)
                 continue
             try:
                 artifact_path = plan.theater_root / target.relative_path
@@ -520,6 +557,12 @@ class ChartService:
                 failures[target.id] = message
                 warnings.append(message)
                 logger_ui.error(message)
+            finally:
+                if progress is not None:
+                    progress(
+                        current=target_index + 1,
+                        total=target_count,
+                    )
 
         _atomic_write_json(plan.index_path, index)
         return {

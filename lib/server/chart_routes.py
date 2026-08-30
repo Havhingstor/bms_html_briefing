@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -13,6 +13,7 @@ logger_ui = logging.getLogger("ui_logger")
 
 class ChartGenerateRequest(BaseModel):
     force: bool = False
+    operation_id: Optional[str] = None
 
 
 def register_chart_routes(app: FastAPI) -> None:
@@ -45,6 +46,14 @@ def register_chart_routes(app: FastAPI) -> None:
         lock = app.state.chart_lock
         if not lock.acquire(blocking=False):
             raise HTTPException(status_code=429, detail="Chart generation is already in progress.")
+        operation_id = payload.operation_id
+        progress = app.state.progress_registry.begin(
+            operation_id,
+            operation="charts",
+            title="Generating charts",
+            message="Resolving selected charts...",
+            note="Only done once per chart. Only runs again when the source data or chart generator updates.",
+        )
         try:
             plan = app.state.chart_service.build_plan(
                 app.state.cfg,
@@ -58,6 +67,7 @@ def register_chart_routes(app: FastAPI) -> None:
                 bms_cfg,
                 force=payload.force,
                 prepared_plan=plan,
+                progress=progress,
             )
             app.state.chart_failures = dict(result.get("failures") or {})
             for warning in result.get("warnings") or []:
@@ -68,10 +78,21 @@ def register_chart_routes(app: FastAPI) -> None:
                 failures=app.state.chart_failures,
             )
             response["result"] = result
+            failures = len(result.get("failures") or {})
+            app.state.progress_registry.complete(
+                operation_id,
+                (
+                    f"Chart generation finished with {failures} failure{'s' if failures != 1 else ''}."
+                    if failures
+                    else "Charts are ready."
+                ),
+            )
             return response
-        except HTTPException:
+        except HTTPException as exc:
+            app.state.progress_registry.fail(operation_id, str(exc.detail))
             raise
         except Exception as exc:
+            app.state.progress_registry.fail(operation_id, f"Chart generation failed: {exc}")
             logger.exception("Chart generation failed")
             logger_ui.error("Chart generation failed: %s", exc)
             raise HTTPException(status_code=500, detail=f"Chart generation failed: {exc}") from exc

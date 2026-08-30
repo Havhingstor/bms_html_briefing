@@ -651,6 +651,87 @@
 
     .chart-dialog::backdrop { background: rgba(0, 0, 0, 0.72); }
 
+    .progress-dialog {
+      width: min(34rem, calc(100vw - 2rem));
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid #ffffff;
+      box-shadow: var(--shadow);
+      padding: 1.25rem;
+      font-family: "Viper";
+    }
+
+    .progress-dialog::backdrop { background: rgba(0, 0, 0, 0.72); }
+
+    .progress-dialog h3 {
+      margin: 0 0 0.8rem;
+      color: var(--line);
+      font-family: "Viper";
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .progress-message {
+      min-height: 1.5em;
+      margin: 0 0 0.75rem;
+      font-family: "IBMPlexMono";
+      line-height: 1.45;
+    }
+
+    .progress-dialog progress {
+      display: block;
+      width: 100%;
+      height: 1.35rem;
+      accent-color: var(--line);
+    }
+
+    .progress-dialog progress::-webkit-progress-bar {
+      background: #000000;
+      border: 1px solid #ffffff;
+    }
+
+    .progress-dialog progress::-webkit-progress-value {
+      background: linear-gradient(90deg, #217ccc, #62bdff);
+    }
+
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-top: 0.45rem;
+      color: rgba(212, 212, 212, 0.78);
+      font-family: "IBMPlexMono";
+      font-size: 0.78rem;
+    }
+
+    .progress-note {
+      margin: 0.9rem 0 0;
+      padding-top: 0.75rem;
+      border-top: 1px solid rgba(58, 167, 255, 0.25);
+      color: rgba(212, 212, 212, 0.82);
+      font-family: "IBMPlexMono";
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+
+    .progress-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 1rem;
+    }
+
+    .progress-actions button {
+      padding: 0.35rem 0.65rem;
+      border: 1px solid #ffffff;
+      background: var(--bg);
+      color: #ffffff;
+    }
+
+    .progress-actions button:hover {
+      color: var(--line);
+      border-color: var(--line);
+    }
+
     .kneeboard-order-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1372,6 +1453,20 @@
     </form>
   </dialog>
 
+  <dialog id="operation-progress-dialog" class="progress-dialog" aria-labelledby="operation-progress-title">
+    <h3 id="operation-progress-title">Working...</h3>
+    <p id="operation-progress-message" class="progress-message">Preparing...</p>
+    <progress id="operation-progress-bar" max="100" aria-describedby="operation-progress-message"></progress>
+    <div class="progress-meta">
+      <span id="operation-progress-count"></span>
+      <span id="operation-progress-elapsed">0:00</span>
+    </div>
+    <p id="operation-progress-note" class="progress-note" hidden></p>
+    <div class="progress-actions">
+      <button id="operation-progress-cancel" type="button" hidden>Stop</button>
+    </div>
+  </dialog>
+
   <script>
     const logEl = document.getElementById("log");
     const statusEl = document.getElementById("status-indicator");
@@ -1410,6 +1505,14 @@
     const generateChartsBtn = document.getElementById("generate-charts-btn");
     const chartPreflightDialog = document.getElementById("chart-preflight-dialog");
     const chartPreflightMessage = document.getElementById("chart-preflight-message");
+    const operationProgressDialog = document.getElementById("operation-progress-dialog");
+    const operationProgressTitle = document.getElementById("operation-progress-title");
+    const operationProgressMessage = document.getElementById("operation-progress-message");
+    const operationProgressBar = document.getElementById("operation-progress-bar");
+    const operationProgressCount = document.getElementById("operation-progress-count");
+    const operationProgressElapsed = document.getElementById("operation-progress-elapsed");
+    const operationProgressNote = document.getElementById("operation-progress-note");
+    const operationProgressCancel = document.getElementById("operation-progress-cancel");
     const generateBriefBtns = Array.from(document.querySelectorAll(".generate-brief-btn"));
     const camSaveSelect = document.getElementById("cam-save-select");
     const camRefreshBtn = document.getElementById("cam-refresh-btn");
@@ -1518,6 +1621,11 @@
     let pdfElapsedTimer = null;
     let pdfCancelRequested = false;
     let activePdfAbortController = null;
+    let activeProgressOperationId = null;
+    let activeProgressSnapshot = null;
+    let activeProgressPollTimer = null;
+    let activeProgressShowTimer = null;
+    let activeProgressStartedAt = 0;
     let exportBusy = false;
     let filesChangedState = false;
     let pendingAutoExport = false;
@@ -1575,6 +1683,110 @@
         console.debug(message);
       }
     }
+
+    function createOperationId(prefix = "operation") {
+      const suffix = globalThis.crypto && typeof globalThis.crypto.randomUUID === "function"
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+      return `${prefix}-${suffix}`;
+    }
+
+    function formatOperationElapsed() {
+      if (!activeProgressStartedAt) return "0:00";
+      const totalSeconds = Math.max(0, Math.floor((performance.now() - activeProgressStartedAt) / 1000));
+      return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
+    }
+
+    function renderOperationProgress(snapshot = {}) {
+      if (!operationProgressDialog) return;
+      activeProgressSnapshot = { ...(activeProgressSnapshot || {}), ...snapshot };
+      const current = Number(activeProgressSnapshot.current);
+      const total = Number(activeProgressSnapshot.total);
+      const determinate = Number.isFinite(current) && Number.isFinite(total) && total > 0;
+      operationProgressTitle.textContent = activeProgressSnapshot.title || "Working...";
+      operationProgressMessage.textContent = activeProgressSnapshot.message || "Preparing...";
+      if (determinate) {
+        operationProgressBar.max = total;
+        operationProgressBar.value = Math.max(0, Math.min(current, total));
+        operationProgressCount.textContent = `${Math.round(Math.max(0, current)).toLocaleString()} of ${Math.round(total).toLocaleString()}`;
+      } else {
+        operationProgressBar.removeAttribute("value");
+        operationProgressCount.textContent = "";
+      }
+      const note = typeof activeProgressSnapshot.note === "string" ? activeProgressSnapshot.note.trim() : "";
+      operationProgressNote.textContent = note;
+      operationProgressNote.hidden = !note;
+      operationProgressCancel.hidden = !activeProgressSnapshot.can_cancel;
+      operationProgressElapsed.textContent = formatOperationElapsed();
+    }
+
+    async function pollOperationProgress(operationId) {
+      try {
+        const snapshot = await fetchJSON(`/api/progress/${encodeURIComponent(operationId)}`);
+        const expectedOperation = activeProgressSnapshot?.operation;
+        if (
+          activeProgressOperationId === operationId
+          && (!expectedOperation || !snapshot.operation || snapshot.operation === expectedOperation)
+        ) {
+          renderOperationProgress(snapshot);
+        }
+      } catch {
+        // The first poll can arrive before the synchronous route registers its operation.
+      }
+    }
+
+    function startOperationProgress(operationId, initial = {}) {
+      if (!operationId) return;
+      if (activeProgressOperationId === operationId) {
+        renderOperationProgress(initial);
+        return;
+      }
+      closeOperationProgress();
+      activeProgressOperationId = operationId;
+      activeProgressSnapshot = {};
+      activeProgressStartedAt = performance.now();
+      renderOperationProgress(initial);
+      activeProgressShowTimer = setTimeout(() => {
+        activeProgressShowTimer = null;
+        if (activeProgressOperationId !== operationId || !operationProgressDialog) return;
+        if (typeof operationProgressDialog.showModal === "function") {
+          if (!operationProgressDialog.open) operationProgressDialog.showModal();
+        } else {
+          operationProgressDialog.setAttribute("open", "");
+        }
+      }, 200);
+      activeProgressPollTimer = setInterval(() => {
+        if (activeProgressOperationId === operationId) {
+          pollOperationProgress(operationId);
+          renderOperationProgress({});
+        }
+      }, 350);
+      pollOperationProgress(operationId);
+    }
+
+    function updateOperationProgress(operationId, changes) {
+      if (activeProgressOperationId !== operationId) {
+        startOperationProgress(operationId, changes);
+        return;
+      }
+      renderOperationProgress(changes);
+    }
+
+    function closeOperationProgress(operationId = null) {
+      if (operationId && activeProgressOperationId !== operationId) return;
+      if (activeProgressPollTimer) clearInterval(activeProgressPollTimer);
+      if (activeProgressShowTimer) clearTimeout(activeProgressShowTimer);
+      activeProgressPollTimer = null;
+      activeProgressShowTimer = null;
+      activeProgressOperationId = null;
+      activeProgressSnapshot = null;
+      activeProgressStartedAt = 0;
+      if (operationProgressDialog?.open) operationProgressDialog.close();
+      operationProgressDialog?.removeAttribute("open");
+    }
+
+    operationProgressDialog?.addEventListener("cancel", (event) => event.preventDefault());
+    operationProgressCancel?.addEventListener("click", () => cancelPdfGeneration());
 
     async function withActiveLogPolling(taskPromise) {
       let done = false;
@@ -2483,13 +2695,23 @@
     if (generateChartsBtn) {
       generateChartsBtn.addEventListener("click", async () => {
         if (pdfBusy || exportBusy) return;
+        const operationId = createOperationId("charts");
+        startOperationProgress(operationId, {
+          operation: "charts",
+          title: "Generating charts",
+          message: "Resolving selected charts...",
+          note: "Only done once per chart. Only runs again when the source data or chart generator updates.",
+          current: null,
+          total: null,
+          can_cancel: false,
+        });
         generateChartsBtn.disabled = true;
         try {
           await syncChartRuntime();
           log("Generating selected charts...");
           const result = await withActiveLogPolling(fetchJSON("/api/charts/generate", {
             method: "POST",
-            body: JSON.stringify({ force: true })
+            body: JSON.stringify({ force: true, operation_id: operationId })
           }));
           renderChartStatus(result);
           log(`Chart generation completed (${result.result?.generated?.length || 0} artifact(s))`);
@@ -2498,6 +2720,7 @@
           log(`Chart generation failed: ${err.message}`);
           await loadChartStatus(true);
         } finally {
+          closeOperationProgress(operationId);
           generateChartsBtn.disabled = false;
         }
       });
@@ -2676,7 +2899,7 @@
       });
     }
 
-    async function prepareChartsForPdf(source = "manual") {
+    async function prepareChartsForPdf(source = "manual", operationId = null) {
       if (!selectedChartsValue()) return;
       await syncChartRuntime();
       const status = await loadChartStatus(true);
@@ -2690,10 +2913,21 @@
         log("Chart generation skipped; unavailable charts will be omitted.");
         return;
       }
+      if (operationId) {
+        startOperationProgress(operationId, {
+          operation: "charts",
+          title: "Generating charts",
+          message: "Generating missing or updated charts...",
+          note: "Only done once per chart. Only runs again when the source data or chart generator updates.",
+          current: 0,
+          total: needed.length,
+          can_cancel: false,
+        });
+      }
       log("Generating missing/stale charts...");
       const result = await withActiveLogPolling(fetchJSON("/api/charts/generate", {
         method: "POST",
-        body: JSON.stringify({ force: false })
+        body: JSON.stringify({ force: false, operation_id: operationId })
       }));
       renderChartStatus(result);
       await loadKneeboardOrder(true, { preserveCurrent: true });
@@ -2704,16 +2938,28 @@
         log("Generate skipped: PDF pipeline is busy");
         return;
       }
+      const operationId = createOperationId("preview");
+      startOperationProgress(operationId, {
+        operation: "preview",
+        title: "Preparing briefing",
+        message: "Checking briefing inputs...",
+        current: null,
+        total: null,
+        can_cancel: false,
+      });
       try {
         log("Generating HTML preview assets...");
+        const payload = { ...(overrides || {}), operation_id: operationId };
         const res = await withActiveLogPolling(
-          fetchJSON("/api/generate", { method: "POST", body: overrides ? JSON.stringify(overrides) : null })
+          fetchJSON("/api/generate", { method: "POST", body: JSON.stringify(payload) })
         );
         log(`HTML generated at ${res.output_file}`);
         refreshBrief();
         await pollStatusBadges();
       } catch (err) {
         log(`Generate failed: ${err.message}`);
+      } finally {
+        closeOperationProgress(operationId);
       }
     }
 
@@ -2722,8 +2968,17 @@
         log("Preview skipped: PDF pipeline is busy");
         return;
       }
+      const operationId = createOperationId("preview");
+      startOperationProgress(operationId, {
+        operation: "preview",
+        title: "Preparing briefing",
+        message: "Checking briefing inputs...",
+        current: null,
+        total: null,
+        can_cancel: false,
+      });
       try {
-        const payload = overrides || currentOverrides();
+        const payload = { ...(overrides || currentOverrides()), operation_id: operationId };
         log("Preparing preview. Map tiles may be generated if the theater map changed.");
         const res = await withActiveLogPolling(
           fetchJSON("/api/preview", { method: "POST", body: JSON.stringify(payload) })
@@ -2733,6 +2988,8 @@
         await pollStatusBadges();
       } catch (err) {
         log(`Preview failed: ${err.message}`);
+      } finally {
+        closeOperationProgress(operationId);
       }
     }
 
@@ -3193,17 +3450,27 @@
       }
     }
 
-    async function runPdfGeneration({ source = "manual", overrides = null, includeTheater = false, started = performance.now(), signal = null } = {}) {
-      await prepareChartsForPdf(source);
+    async function runPdfGeneration({ source = "manual", overrides = null, includeTheater = false, started = performance.now(), signal = null, operationId = null } = {}) {
+      await prepareChartsForPdf(source, operationId);
       const activeOverrides = overrides || currentOverrides();
       let payload;
       try {
         throwIfPdfAborted(signal);
         payload = { content: getLatestEdits(), ...activeOverrides };
+        payload.operation_id = operationId;
         payload.kneeboard_order = readKneeboardOrderSides();
         if (source === "auto") {
           payload.update_change_refs = false;
         }
+        startOperationProgress(operationId, {
+          operation: "pdf",
+          title: "Generating PDF",
+          message: layoutIncludesMap() ? "Capturing the briefing map..." : "Preparing briefing content...",
+          note: null,
+          current: null,
+          total: null,
+          can_cancel: true,
+        });
         const mapImage = await captureMapImage(signal);
         throwIfPdfAborted(signal);
         if (mapImage) {
@@ -3227,6 +3494,15 @@
         debugLog(`PDF request: failed to measure payload size: ${err.message}`);
       }
       throwIfPdfAborted(signal);
+      updateOperationProgress(operationId, {
+        operation: "pdf",
+        title: "Generating PDF",
+        message: "Starting the PDF renderer...",
+        note: null,
+        current: null,
+        total: null,
+        can_cancel: true,
+      });
       debugLog("PDF request: POST /api/pdf start");
       const pdfRes = await fetchJSON("/api/pdf", {
         method: "POST",
@@ -3246,15 +3522,24 @@
       const pdfController = beginPdfClientOperation();
       const { signal } = pdfController;
       const started = performance.now();
+      const operationId = createOperationId("kneeboard");
       try {
         const overrides = currentOverrides();
         const pdfOnlyAuto = source === "auto" && autoExportPdfOnly;
         const prepareAndRun = async () => {
           if (source === "auto") {
             try {
+              startOperationProgress(operationId, {
+                operation: "preview",
+                title: "Preparing briefing",
+                message: "Refreshing the briefing preview...",
+                current: null,
+                total: null,
+                can_cancel: false,
+              });
               const prevRes = await fetchJSON("/api/preview", {
                 method: "POST",
-                body: JSON.stringify({ ...overrides, update_change_refs: false }),
+                body: JSON.stringify({ ...overrides, update_change_refs: false, operation_id: operationId }),
                 signal
               });
               log(`Auto-export preview refreshed at ${prevRes.output_file}`);
@@ -3274,7 +3559,8 @@
             overrides,
             includeTheater: true,
             started,
-            signal
+            signal,
+            operationId
           });
         };
         const { payload } = source === "auto"
@@ -3292,13 +3578,23 @@
           }
         }
         if (!pdfOnlyAuto) {
+          updateOperationProgress(operationId, {
+            operation: "kneeboard",
+            title: "Exporting kneeboard",
+            message: "Resolving kneeboard pages...",
+            note: null,
+            current: null,
+            total: null,
+            can_cancel: false,
+          });
           const expRes = await withActiveLogPolling(
             fetchJSON("/api/export", {
               method: "POST",
               body: JSON.stringify({
                 ...overrides,
                 theater: payload.theater,
-                kneeboard_order: readKneeboardOrderSides()
+                kneeboard_order: readKneeboardOrderSides(),
+                operation_id: operationId
               })
             })
           );
@@ -3323,6 +3619,7 @@
         log(`${prefix} after ${(performance.now() - started).toFixed(1)}ms: ${err.message}`);
         return { ok: false, error: err };
       } finally {
+        closeOperationProgress(operationId);
         finishPdfClientOperation(pdfController);
         setExportBusy(false);
         setPdfBusy(false);
@@ -3405,12 +3702,14 @@
       setPdfBusy(true);
       const pdfController = beginPdfClientOperation();
       const started = performance.now();
+      const operationId = createOperationId("pdf");
       try {
         await runPdfGeneration({
           source: "manual",
           overrides: currentOverrides(),
           started,
-          signal: pdfController.signal
+          signal: pdfController.signal,
+          operationId
         });
         await pollStatusBadges();
       } catch (err) {
@@ -3421,6 +3720,7 @@
         }
         await pollStatusBadges();
       } finally {
+        closeOperationProgress(operationId);
         finishPdfClientOperation(pdfController);
         setPdfBusy(false);
       }

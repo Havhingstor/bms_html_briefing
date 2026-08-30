@@ -22,6 +22,8 @@ from .resvg_render import (
     render_svg_pages_pdf,
 )
 from .render import (
+    AirportRenderContext,
+    build_airport_render_context,
     render_airport_chart_svg,
     render_airport_parking_chart_svg,
 )
@@ -186,7 +188,7 @@ class OpenChartContractError(OpenChartError):
 
 
 class TheaterSource:
-    """Resolve and render airfields from one compatible BMS theater data set."""
+    """Resolve and render one immutable theater or campaign snapshot."""
 
     def __init__(
         self,
@@ -234,6 +236,11 @@ class TheaterSource:
             )
             for key, entries in entries_by_key.items()
         }
+        self._render_contexts: dict[int, AirportRenderContext] = {}
+        self._source_manifests: dict[
+            tuple[int, bool],
+            tuple[tuple[str, str, int, int], ...],
+        ] = {}
 
     def resolve_airfield(self, query: AirfieldQuery) -> ResolvedAirfield:
         """Resolve a query without silently selecting an ambiguous airfield."""
@@ -342,7 +349,11 @@ class TheaterSource:
         _validate_supported_kind(airport, chart_kind)
         try:
             signature_before = self._generation_signature(airport, chart_kind)
-            pages = _render_pages(airport, chart_kind)
+            pages = _render_pages(
+                airport,
+                chart_kind,
+                self._render_context_for(airport),
+            )
             warnings = _chart_warnings(airport, chart_kind)
             signature_after = self._generation_signature(airport, chart_kind)
         except OpenChartError:
@@ -396,6 +407,8 @@ class TheaterSource:
         airfield: ResolvedAirfield,
         kind: ChartKind,
         options: PdfRenderOptions | None = None,
+        *,
+        dpi: float | None = None,
     ) -> PdfChartDescriptor:
         """Describe the cached PDF result without rendering the chart pages."""
 
@@ -403,7 +416,8 @@ class TheaterSource:
         airport = self._airport_for(airfield)
         _validate_pdf_page_availability(airport, descriptor.kind)
         try:
-            backend = inspect_pdf_backend(options)
+            settings = _resolve_pdf_options(options, dpi)
+            backend = inspect_pdf_backend(settings)
         except PdfBackendError as exc:
             raise PdfRenderError(str(exc), code=exc.code) from exc
         return PdfChartDescriptor(
@@ -422,6 +436,8 @@ class TheaterSource:
         airfield: ResolvedAirfield,
         kind: ChartKind,
         options: PdfRenderOptions | None = None,
+        *,
+        dpi: float | None = None,
     ) -> PdfChartDocument:
         """Render one chart kind as a resvg-rasterized A4 PDF document."""
 
@@ -433,10 +449,11 @@ class TheaterSource:
                 details={"airfield_key": airfield.key},
             )
         try:
-            backend = inspect_pdf_backend(options)
+            settings = _resolve_pdf_options(options, dpi)
+            backend = inspect_pdf_backend(settings)
             pdf_bytes, backend = render_svg_pages_pdf(
                 tuple(page.svg_bytes for page in svg_document.pages),
-                options,
+                settings,
                 backend=backend,
             )
         except PdfBackendError as exc:
@@ -500,6 +517,13 @@ class TheaterSource:
                 details={"airfield_key": airfield.key},
             ) from exc
 
+    def _render_context_for(self, airport: AirportData) -> AirportRenderContext:
+        context = self._render_contexts.get(airport.campaign_id)
+        if context is None:
+            context = build_airport_render_context(airport)
+            self._render_contexts[airport.campaign_id] = context
+        return context
+
     def _airfield_key(self, entry: AirfieldIndexEntry) -> str:
         placement = entry.placement
         logical_position = (
@@ -517,10 +541,7 @@ class TheaterSource:
         airport: AirportData,
         kind: ChartKind,
     ) -> str:
-        manifest = [
-            _path_state(path)
-            for path in _relevant_source_paths(self._repository, airport, kind)
-        ]
+        manifest = self._source_manifest(airport, kind)
         payload = {
             "api_version": OPENCHART_API_VERSION,
             "renderer_version": OPENCHART_RENDERER_VERSION,
@@ -542,6 +563,39 @@ class TheaterSource:
             separators=(",", ":"),
         ).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
+
+    def _source_manifest(
+        self,
+        airport: AirportData,
+        kind: ChartKind,
+    ) -> tuple[tuple[str, str, int, int], ...]:
+        cache_key = (airport.campaign_id, kind is ChartKind.LOCAL)
+        cached = self._source_manifests.get(cache_key)
+        if cached is not None:
+            return cached
+
+        if kind is ChartKind.LOCAL:
+            base = self._source_manifest(airport, ChartKind.GROUND)
+            base_paths = {item[0] for item in base}
+            additions = tuple(
+                _path_state(path)
+                for path in _local_source_paths(self._repository, airport)
+                if str(path) not in base_paths
+            )
+            manifest = tuple(
+                sorted(base + additions, key=lambda item: item[0].casefold())
+            )
+        else:
+            manifest = tuple(
+                _path_state(path)
+                for path in _relevant_source_paths(
+                    self._repository,
+                    airport,
+                    ChartKind.GROUND,
+                )
+            )
+        self._source_manifests[cache_key] = manifest
+        return manifest
 
 
 def _validate_query(
@@ -652,13 +706,27 @@ def _validate_pdf_page_availability(airport: AirportData, kind: ChartKind) -> No
 def _render_pages(
     airport: AirportData,
     kind: ChartKind,
+    context: AirportRenderContext,
 ) -> tuple[ChartPage, ...]:
     if kind is ChartKind.GROUND:
-        return (ChartPage(0, "Ground", render_airport_chart_svg(airport)),)
+        return (
+            ChartPage(
+                0,
+                "Ground",
+                render_airport_chart_svg(airport, context=context),
+            ),
+        )
     if kind is ChartKind.LOCAL:
-        return (ChartPage(0, "Local", render_topographic_chart_svg(airport)),)
+        return (
+            ChartPage(
+                0,
+                "Local",
+                render_topographic_chart_svg(airport, context=context),
+            ),
+        )
     charts = build_parking_charts(
         airport.layout,
+        runways=context.runways,
         atc=airport.atc,
         magnetic_variation_degrees=airport.magnetic_variation_degrees,
     )
@@ -666,7 +734,11 @@ def _render_pages(
         ChartPage(
             ordinal=ordinal,
             label=f"RWY {chart.designator}",
-            svg_bytes=render_airport_parking_chart_svg(airport, chart),
+            svg_bytes=render_airport_parking_chart_svg(
+                airport,
+                chart,
+                context=context,
+            ),
             runway_designator=chart.designator,
         )
         for ordinal, chart in enumerate(charts)
@@ -822,20 +894,29 @@ def _relevant_source_paths(
                     path for path in model_dir.rglob("*") if path.is_file()
                 )
     if kind is ChartKind.LOCAL:
-        if airport.terrain_height_source is not None:
-            candidates.add(airport.terrain_height_source.source_path)
-        if airport.terrain_land_cover_source is not None:
-            candidates.add(airport.terrain_land_cover_source.source_path)
-        theater_paths = paths.theater_data_paths
-        if theater_paths is not None:
-            for optional in (
-                theater_paths.definition_path,
-                theater_paths.metadata_path,
-                theater_paths.land_cover_types_path,
-                theater_paths.magnetic_variation_path,
-            ):
-                if optional is not None:
-                    candidates.add(optional)
+        candidates.update(_local_source_paths(repository, airport))
+    return tuple(sorted(candidates, key=lambda path: str(path).casefold()))
+
+
+def _local_source_paths(
+    repository: AirportRepository,
+    airport: AirportData,
+) -> tuple[Path, ...]:
+    candidates: set[Path] = set()
+    if airport.terrain_height_source is not None:
+        candidates.add(airport.terrain_height_source.source_path)
+    if airport.terrain_land_cover_source is not None:
+        candidates.add(airport.terrain_land_cover_source.source_path)
+    theater_paths = repository.support.paths.theater_data_paths
+    if theater_paths is not None:
+        for optional in (
+            theater_paths.definition_path,
+            theater_paths.metadata_path,
+            theater_paths.land_cover_types_path,
+            theater_paths.magnetic_variation_path,
+        ):
+            if optional is not None:
+                candidates.add(optional)
     return tuple(sorted(candidates, key=lambda path: str(path).casefold()))
 
 
@@ -864,6 +945,20 @@ def _pdf_generation_signature(
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _resolve_pdf_options(
+    options: PdfRenderOptions | None,
+    dpi: float | None,
+) -> PdfRenderOptions | None:
+    if dpi is None:
+        return options
+    if options is not None:
+        raise PdfBackendError(
+            "pass either PdfRenderOptions or dpi, not both",
+            code="invalid_pdf_options",
+        )
+    return PdfRenderOptions(dpi=dpi)
 
 
 __all__ = [

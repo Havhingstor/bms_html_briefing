@@ -316,10 +316,10 @@ class AirportRepository:
 
 def load_airports(
     data_root: str | Path,
-    campaign_path: str | Path,
+    campaign_path: str | Path | None = None,
     campaign_ids: tuple[int, ...] = DEFAULT_CAMPAIGN_IDS,
 ) -> tuple[AirportData, ...]:
-    """Load selected airfields and require exact objective/layout joins."""
+    """Load selected airfields, optionally validating a campaign snapshot."""
 
     if not campaign_ids:
         raise AirportDataError("at least one campaign ID is required")
