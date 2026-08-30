@@ -311,6 +311,7 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH, theater_ini_pattern: Opt
 
     register_config_routes(
         app,
+        static_root=STATIC_ROOT,
         ensure_dirs=ensure_dirs,
         load_config=load_config,
         save_config=save_config,

@@ -235,6 +235,32 @@ def local_map_available(map_file):
     return bool(map_file) and os.path.isfile(map_file)
 
 
+def local_map_tiles_status(map_file, map_dir, theater, version=None):
+    """Report whether switching to the local map would generate its tile cache."""
+
+    available = local_map_available(map_file)
+    if not available:
+        return {
+            "available": False,
+            "generated": False,
+            "generation_required": False,
+        }
+
+    cache_slug = map_cache_slug("-".join(part for part in (str(version or "").strip(), theater) if part))
+    cache_dir = os.path.join(map_dir, "theaters", cache_slug)
+    cache_output_path = os.path.join(cache_dir, "map.png")
+    source_digest = map_digest(map_file)
+    generated = (
+        os.path.isfile(cache_output_path)
+        and map_tiles_current(cache_dir, cache_output_path, source_digest)
+    )
+    return {
+        "available": True,
+        "generated": generated,
+        "generation_required": not generated,
+    }
+
+
 def prepare_local_map_tiles(
     map_file,
     map_dir,

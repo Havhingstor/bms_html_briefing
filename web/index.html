@@ -732,6 +732,10 @@
       border-color: var(--line);
     }
 
+    body.is-initializing .page-wrap {
+      visibility: hidden;
+    }
+
     .kneeboard-order-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1157,7 +1161,7 @@
   </style>
   <link rel="stylesheet" href="/templates/interface.css">
 </head>
-<body>
+<body class="is-initializing">
   <div class="page-wrap">
     <header>
       <div>
@@ -1608,6 +1612,7 @@
     let dndAttached = false;
     let mapSources = [{ id: "local", label: "BMS local" }];
     let selectedMapSourceId = "local";
+    const LOCAL_MAP_GENERATION_CONFIRM = "The local map tiles are not yet generated, do you want to generate them now? It should take 1-2 minutes. Only done once per map.";
     let draggingEl = null;
     let draggingFrom = null;
     let kneeboardDraggingEl = null;
@@ -1735,7 +1740,7 @@
       }
     }
 
-    function startOperationProgress(operationId, initial = {}) {
+    function startOperationProgress(operationId, initial = {}, options = {}) {
       if (!operationId) return;
       if (activeProgressOperationId === operationId) {
         renderOperationProgress(initial);
@@ -1746,7 +1751,7 @@
       activeProgressSnapshot = {};
       activeProgressStartedAt = performance.now();
       renderOperationProgress(initial);
-      activeProgressShowTimer = setTimeout(() => {
+      const showProgressDialog = () => {
         activeProgressShowTimer = null;
         if (activeProgressOperationId !== operationId || !operationProgressDialog) return;
         if (typeof operationProgressDialog.showModal === "function") {
@@ -1754,7 +1759,14 @@
         } else {
           operationProgressDialog.setAttribute("open", "");
         }
-      }, 200);
+      };
+      const requestedDelay = Number(options.showDelay);
+      const showDelay = Number.isFinite(requestedDelay) && requestedDelay >= 0 ? requestedDelay : 200;
+      if (showDelay === 0) {
+        showProgressDialog();
+      } else {
+        activeProgressShowTimer = setTimeout(showProgressDialog, showDelay);
+      }
       activeProgressPollTimer = setInterval(() => {
         if (activeProgressOperationId === operationId) {
           pollOperationProgress(operationId);
@@ -2496,6 +2508,21 @@
       return { map: selected.id };
     }
 
+    function restoreFrameMapSourceSelect(sourceWindow, mapSourceId) {
+      try {
+        const select = sourceWindow?.document?.getElementById("mapSourceSelect");
+        if (select) select.value = mapSourceId;
+      } catch {
+        // The message already passed the same-origin check; keep this best-effort.
+      }
+    }
+
+    async function confirmLocalMapGeneration(nextMapSource) {
+      if (nextMapSource !== "local") return true;
+      const status = await fetchJSON("/api/map-sources/local-status");
+      return !status.generation_required || window.confirm(LOCAL_MAP_GENERATION_CONFIRM);
+    }
+
     async function loadMapSources() {
       try {
         const data = await fetchJSON("/api/map-sources");
@@ -2598,7 +2625,7 @@
       return { hasError, appStateReset };
     }
 
-    async function loadStatus(allowRetry = true) {
+    async function loadStatus(allowRetry = true, options = {}) {
       try {
         const data = await fetchJSON("/api/status");
         const { hasError, appStateReset } = applyStatusData(data);
@@ -2614,11 +2641,14 @@
         await loadChartStatus(true);
         await refreshCamSaveList(true);
         if (!hasError && pages.length > 0) {
-          await doPreview(currentOverrides());
+          await doPreview(currentOverrides(), {
+            operationId: options.operationId,
+            waitForFrame: !!options.operationId,
+          });
         }
         if (hasError && allowRetry) {
           await fetchJSON("/api/reload", { method: "POST" });
-          await loadStatus(false);
+          await loadStatus(false, options);
         }
       } catch (err) {
         if (hasSeenStatusSuccess) {
@@ -2629,7 +2659,7 @@
         if (allowRetry) {
           try {
             await fetchJSON("/api/reload", { method: "POST" });
-            await loadStatus(false);
+            await loadStatus(false, options);
           } catch (e) {
             log(`Reload failed: ${e.message}`);
           }
@@ -2791,6 +2821,18 @@
       if (data.type !== "html_brief_map_source_change") return;
       const nextMapSource = getMapSourceById(data.map).id;
       if (nextMapSource === selectedMapSourceId) return;
+      const previousMapSource = selectedMapSourceId;
+      try {
+        if (!await confirmLocalMapGeneration(nextMapSource)) {
+          restoreFrameMapSourceSelect(ev.source, previousMapSource);
+          log("Local map generation cancelled");
+          return;
+        }
+      } catch (err) {
+        restoreFrameMapSourceSelect(ev.source, previousMapSource);
+        log(`Local map readiness check failed: ${err.message}`);
+        return;
+      }
       setSelectedMapSource(nextMapSource);
       clearSavedCamRenderedValues({ clearBullseye: true });
       if (currentMainView === "dtc") {
@@ -2956,6 +2998,7 @@
         log(`HTML generated at ${res.output_file}`);
         refreshBrief();
         await pollStatusBadges();
+        await loadChartStatus(true);
       } catch (err) {
         log(`Generate failed: ${err.message}`);
       } finally {
@@ -2963,12 +3006,13 @@
       }
     }
 
-    async function doPreview(overrides = null) {
+    async function doPreview(overrides = null, options = {}) {
       if (pdfBusy || exportBusy) {
         log("Preview skipped: PDF pipeline is busy");
         return;
       }
-      const operationId = createOperationId("preview");
+      const operationId = options.operationId || createOperationId("preview");
+      const ownsProgress = !options.operationId;
       startOperationProgress(operationId, {
         operation: "preview",
         title: "Preparing briefing",
@@ -2984,12 +3028,12 @@
           fetchJSON("/api/preview", { method: "POST", body: JSON.stringify(payload) })
         );
         log(`Preview generated at ${res.output_file}`);
-        refreshBrief();
+        await refreshBrief(!!options.waitForFrame);
         await pollStatusBadges();
       } catch (err) {
         log(`Preview failed: ${err.message}`);
       } finally {
-        closeOperationProgress(operationId);
+        if (ownsProgress) closeOperationProgress(operationId);
       }
     }
 
@@ -4496,19 +4540,51 @@
     }
 
     async function initializeUi() {
-      log("Loading configuration...");
-      logPollTimer = setInterval(pollLogs, 1000);
-      await loadAppVersion();
-      await loadMapSources();
-      await loadConfig();
-      log("Loading status and generating initial preview if needed...");
-      await loadStatus();
-      await loadKneeboardOrder(true);
-      await pollLogs();
-      await pollStatusBadges();
-      clearInterval(logPollTimer);
-      logPollTimer = setInterval(pollLogs, 2500);
-      statusPollTimer = setInterval(pollStatusBadges, 5000);
+      const operationId = createOperationId("startup");
+      const startupProgress = (current, message) => updateOperationProgress(operationId, {
+        operation: "startup",
+        title: "Loading app",
+        message,
+        note: "Preparing the interface and briefing preview.",
+        current,
+        total: 6,
+        can_cancel: false,
+      });
+      startOperationProgress(operationId, {
+        operation: "startup",
+        title: "Loading app",
+        message: "Loading application information...",
+        note: "Preparing the interface and briefing preview.",
+        current: 0,
+        total: 6,
+        can_cancel: false,
+      }, { showDelay: 0 });
+      try {
+        log("Loading configuration...");
+        logPollTimer = setInterval(pollLogs, 1000);
+        await loadAppVersion();
+        startupProgress(1, "Loading map sources...");
+        await loadMapSources();
+        startupProgress(2, "Loading configuration...");
+        await loadConfig();
+        startupProgress(3, "Loading status and preparing the briefing preview...");
+        log("Loading status and generating initial preview if needed...");
+        await loadStatus(true, { operationId });
+        startupProgress(4, "Loading kneeboard layout...");
+        await loadKneeboardOrder(true);
+        startupProgress(5, "Finishing startup checks...");
+        await pollLogs();
+        await pollStatusBadges();
+        startupProgress(6, "Ready");
+        clearInterval(logPollTimer);
+        logPollTimer = setInterval(pollLogs, 2500);
+        statusPollTimer = setInterval(pollStatusBadges, 5000);
+      } catch (err) {
+        log(`Startup failed: ${err.message}`);
+      } finally {
+        document.body.classList.remove("is-initializing");
+        closeOperationProgress(operationId);
+      }
     }
 
     initializeUi();

@@ -21,6 +21,7 @@ from lib.kneeboard_order import (
     save_kneeboard_sides,
 )
 from lib.map_sources import REPLACED_MAP_SYSTEM_KEYS, map_source_options
+from lib.map_tiles import local_map_tiles_status, resolve_local_map_file
 
 logger = logging.getLogger("html_brief_log")
 
@@ -101,6 +102,7 @@ def _replace_bms_config(app: FastAPI, bms_cfg: Any, *, force_invalidate: bool = 
 def register_config_routes(
     app: FastAPI,
     *,
+    static_root: Path,
     ensure_dirs: Callable[[configparser.ConfigParser], None],
     load_config: Callable[[Path], configparser.ConfigParser],
     save_config: Callable[[configparser.ConfigParser, Path], None],
@@ -142,6 +144,19 @@ def register_config_routes(
         except Exception:
             pass
         return {"sources": map_source_options(bms_version)}
+
+    @app.get("/api/map-sources/local-status")
+    def get_local_map_status() -> Dict[str, Any]:
+        bms = app.state.bms_cfg
+        if bms is None:
+            raise HTTPException(status_code=500, detail="BMS config is not loaded. Reload and try again.")
+        map_file = resolve_local_map_file(bms, str(static_root))
+        return local_map_tiles_status(
+            map_file,
+            str(static_root / "assets" / "maps"),
+            bms.theater,
+            getattr(bms, "version", None),
+        )
 
     @app.get("/api/kneeboard/order")
     def get_kneeboard_order() -> Dict[str, Any]:
