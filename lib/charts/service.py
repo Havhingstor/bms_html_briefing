@@ -76,6 +76,7 @@ class ChartPlan:
     targets: list[ChartTarget] = field(default_factory=list)
     selection_targets: dict[str, ChartTarget] = field(default_factory=dict)
     errors: dict[str, str] = field(default_factory=dict)
+    unresolved_roles: set[ChartRole] = field(default_factory=set)
     warnings: list[str] = field(default_factory=list)
     source: Any | None = field(default=None, repr=False)
 
@@ -302,7 +303,8 @@ class ChartService:
                 resolved_roles[role] = source.resolve_airfield(query)
             except Exception as exc:
                 message = f"Charts: {role.value} airfield is unavailable: {exc}"
-                plan.warnings.append(message)
+                plan.unresolved_roles.add(role)
+                logger.debug(message)
                 for selection in requested:
                     if selection.role is role:
                         plan.errors[selection.id] = message
@@ -392,12 +394,18 @@ class ChartService:
                 else:
                     entry = index["artifacts"].get(target.id)
                     state = _artifact_state(plan, target, entry)
+            display_state = (
+                "not detected"
+                if selection.role in plan.unresolved_roles
+                else state
+            )
             rows.append({
                 "id": selection.id,
                 "role": selection.role.value,
                 "kind": selection.kind.value,
                 "selected": selection.id in selected_ids,
                 "state": state,
+                "display_state": display_state,
                 "message": message,
                 "airfield_key": target.airfield_key if target else None,
                 "airfield": target.display_name if target else None,

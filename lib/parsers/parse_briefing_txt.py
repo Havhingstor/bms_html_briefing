@@ -580,7 +580,11 @@ class Briefing:
         def init_agency(self, brf, agncy):
             for x in brf.comm:
                 if x.agency == agncy + " Tower":
-                    return x.callsign.split(" ")[0]
+                    callsign = str(x.callsign).strip()
+                    suffix = " Tower"
+                    if callsign.casefold().endswith(suffix.casefold()):
+                        return callsign[:-len(suffix)].rstrip()
+                    return callsign
             return ""
 
     def fill_airbases(self, brf = None):

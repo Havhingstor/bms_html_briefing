@@ -2894,7 +2894,7 @@
       document.querySelectorAll("[data-chart-status]").forEach((statusEl) => {
         const row = byId.get(statusEl.dataset.chartStatus);
         const state = row?.state || "missing";
-        statusEl.textContent = state;
+        statusEl.textContent = row?.display_state || state;
         statusEl.className = `chart-state ${state}`;
         statusEl.title = row?.message || (row?.airfield ? `${row.airfield}${row.shared_with?.length ? " (shared artifact)" : ""}` : "");
       });
