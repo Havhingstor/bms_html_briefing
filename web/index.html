@@ -642,15 +642,6 @@
     .chart-state.failed, .chart-state.stale { color: #ff9a9a; }
     .chart-state.generating { color: #80bfff; }
 
-    .chart-dialog {
-      max-width: 32rem;
-      color: var(--text);
-      background: var(--panel-strong);
-      border: 1px solid rgba(58, 167, 255, 0.75);
-    }
-
-    .chart-dialog::backdrop { background: rgba(0, 0, 0, 0.72); }
-
     .progress-dialog {
       width: min(34rem, calc(100vw - 2rem));
       color: var(--text);
@@ -717,6 +708,7 @@
     .progress-actions {
       display: flex;
       justify-content: flex-end;
+      gap: 0.5rem;
       margin-top: 1rem;
     }
 
@@ -1446,11 +1438,11 @@
     </div>
   </div>
 
-  <dialog id="chart-preflight-dialog" class="chart-dialog">
+  <dialog id="chart-preflight-dialog" class="progress-dialog" aria-labelledby="chart-preflight-title">
     <form method="dialog">
-      <h3>Charts need generation</h3>
-      <p id="chart-preflight-message"></p>
-      <div class="button-row">
+      <h3 id="chart-preflight-title">Charts need generation</h3>
+      <p id="chart-preflight-message" class="progress-message"></p>
+      <div class="progress-actions">
         <button value="generate">Generate now</button>
         <button value="skip">Skip</button>
       </div>

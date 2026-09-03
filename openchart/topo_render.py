@@ -84,7 +84,8 @@ COMMUNICATION_LABEL_OFFSET = 31.5
 COMMUNICATION_VALUE_OFFSET = 68.0
 COMMUNICATION_TOWER_VALUE_OFFSETS = (68.0, 101.0)
 ILS_CELL_HEIGHT = COMMUNICATION_CELL_HEIGHT
-ILS_VALUE_OFFSET = COMMUNICATION_VALUE_OFFSET
+ILS_LINE_OFFSETS = (31.5, 66.0, 100.5)
+TACAN_LINE_OFFSETS = (42.0, 84.0)
 ILS_FEATHER_LENGTH_NM = 8.0
 ILS_FEATHER_HALF_WIDTH_NM = 0.7
 ILS_FEATHER_HEADING_POSITION = 0.72
@@ -315,6 +316,7 @@ def render_topographic_chart_svg(
     )
     _communications(root, airport)
     _ils_frequency_row(root, airport, ils_approaches)
+    _tacan_frequency_row(root, airport)
     _footer(root, airport)
 
     ET.indent(root, space="  ")
@@ -450,6 +452,7 @@ def _ils_frequency_row(
             item_attributes.update(
                 {
                     "data-runway": approach.designator,
+                    "data-heading": f"{_magnetic_heading(approach):03d}",
                     "data-frequency": _ils_frequency(
                         approach.frequency_hundredths_mhz
                     ),
@@ -472,32 +475,123 @@ def _ils_frequency_row(
         )
         if approach is None:
             continue
-        _element(
-            "text",
-            {
-                "class": "frequency-service ils-service",
-                "x": _number(x + cell_width / 2.0),
-                "y": _number(y + COMMUNICATION_LABEL_OFFSET),
-                "font-size": "27",
-                "font-weight": "400",
-                "text-anchor": "middle",
-            },
+        _labeled_value_text(
             item,
-            f"ILS {approach.designator}",
+            classes="ils-service",
+            value_class="ils-runway-value",
+            x=x + cell_width / 2.0,
+            y=y + ILS_LINE_OFFSETS[0],
+            label="RWY",
+            value=approach.designator,
         )
-        _element(
-            "text",
-            {
-                "class": "frequency-value ils-value",
-                "x": _number(x + cell_width / 2.0),
-                "y": _number(y + ILS_VALUE_OFFSET),
-                "font-size": "27",
-                "font-weight": "700",
-                "text-anchor": "middle",
-            },
+        _labeled_value_text(
             item,
-            _ils_frequency(approach.frequency_hundredths_mhz),
+            classes="ils-heading",
+            value_class="ils-heading-value",
+            x=x + cell_width / 2.0,
+            y=y + ILS_LINE_OFFSETS[1],
+            label="HDG",
+            value=f"{_magnetic_heading(approach):03d}",
         )
+        _labeled_value_text(
+            item,
+            classes="ils-frequency",
+            value_class="ils-value",
+            x=x + cell_width / 2.0,
+            y=y + ILS_LINE_OFFSETS[2],
+            label="ILS",
+            value=_ils_frequency(approach.frequency_hundredths_mhz),
+        )
+
+
+def _tacan_frequency_row(root: ET.Element, airport: AirportData) -> None:
+    station = airport.station
+    if (
+        station is None
+        or station.tacan_channel <= 0
+        or station.tacan_range <= 0
+    ):
+        return
+    cell_width = COMMUNICATIONS_WIDTH / 4.0
+    x = COMMUNICATIONS_LEFT
+    y = COMMUNICATIONS_TOP + COMMUNICATION_CELL_HEIGHT + ILS_CELL_HEIGHT
+    group = _element(
+        "g",
+        {"id": "topographic-tacan", "data-layout": "1x1"},
+        root,
+    )
+    item = _element(
+        "g",
+        {
+            "class": "tacan-box",
+            "data-channel": f"{station.tacan_channel}{station.tacan_band}",
+            "data-range-nm": str(station.tacan_range),
+        },
+        group,
+    )
+    _element(
+        "rect",
+        {
+            "class": "frequency-cell tacan-cell",
+            "x": _number(x),
+            "y": _number(y),
+            "width": _number(cell_width),
+            "height": _number(ILS_CELL_HEIGHT),
+            "fill": "#fff",
+            "stroke": "#182026",
+            "stroke-width": "1.5",
+        },
+        item,
+    )
+    _labeled_value_text(
+        item,
+        classes="tacan-channel",
+        value_class="tacan-channel-value",
+        x=x + cell_width / 2.0,
+        y=y + TACAN_LINE_OFFSETS[0],
+        label="TCN",
+        value=f"{station.tacan_channel}{station.tacan_band}",
+    )
+    _labeled_value_text(
+        item,
+        classes="tacan-range",
+        value_class="tacan-range-value",
+        x=x + cell_width / 2.0,
+        y=y + TACAN_LINE_OFFSETS[1],
+        label="RNG",
+        value=f"{station.tacan_range} NM",
+    )
+
+
+def _labeled_value_text(
+    parent: ET.Element,
+    *,
+    classes: str,
+    value_class: str,
+    x: float,
+    y: float,
+    label: str,
+    value: str,
+) -> None:
+    line = _element(
+        "text",
+        {
+            "class": f"frequency-service {classes}",
+            "x": _number(x),
+            "y": _number(y),
+            "font-size": "27",
+            "font-weight": "400",
+            "text-anchor": "middle",
+        },
+        parent,
+        f"{label} ",
+    )
+    _element(
+        "tspan",
+        {"class": f"frequency-inline-value {value_class}"},
+        line,
+        value,
+    )
 
 
 def _frequency(value: int) -> str:
@@ -509,6 +603,10 @@ def _frequency(value: int) -> str:
 
 def _ils_frequency(value: int) -> str:
     return f"{value / 100.0:.2f}"
+
+
+def _magnetic_heading(approach: IlsApproach) -> int:
+    return int(math.floor(approach.course_magnetic + 0.5)) % 360
 
 
 def _airport_ils_approaches(
@@ -907,9 +1005,7 @@ def _ils_feathers(
             text_angle -= 180.0
         elif text_angle <= -90.0:
             text_angle += 180.0
-        magnetic_heading = int(
-            math.floor(approach.course_magnetic + 0.5)
-        ) % 360
+        magnetic_heading = _magnetic_heading(approach)
         _element(
             "text",
             {
@@ -2014,6 +2110,7 @@ text {{ font-family: Arial, Helvetica, sans-serif; fill: #182026; }}
 .frequency-cell-tower {{ stroke-width: 2.5; }}
 .frequency-service {{ font-size: 27px; font-weight: 400; text-anchor: middle; }}
 .frequency-value {{ font-size: 27px; font-weight: 700; text-anchor: middle; }}
+.frequency-inline-value {{ font-weight: 700; }}
 .range-ring {{ fill: none; stroke: #182026; stroke-width: 1.4; }}
 .range-ring-label {{ font-size: 16.8px; font-weight: 700; letter-spacing: 0.7px; }}
 .ils-feather-underlay {{ fill: #fff; fill-opacity: 0.4; stroke: none; }}
