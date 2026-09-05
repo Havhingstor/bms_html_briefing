@@ -84,7 +84,7 @@ In case you want to override the auto-detected BMS parameters (for example, if y
 [override]
 callsign = <SET CALLSIGN>
 base_dir = <BMS base dir>
-thater = <BMS theater>
+theater = <BMS theater>
 ```
 ### Map
 Starting with version 0.5 there is an option to add a map to the kneeboards. This uses [Leaflet](https://leafletjs.com/).
