@@ -547,7 +547,7 @@ class Briefing:
         
     class Airbase:
         def __init__(self, brf = None, agncy = None):
-            for attr in ["tcn", "ground", "approach", "ils", "agency"]:
+            for attr in ["ground", "tower", "approach", "agency"]:
                 init_func = getattr(self, f'init_{attr}', None)
                 if callable(init_func):
                     try:
@@ -559,12 +559,15 @@ class Briefing:
                 else:
                     logger.warning(f"No function to find {type(self).__name__}.{attr}")
 
-        def init_tcn(self, brf, agncy):
-            return ""
-
         def init_ground(self, brf, agncy):
             for x in brf.comm:
                 if x.agency == agncy + " Ground":
+                    return x.uhf
+            return ""
+
+        def init_tower(self, brf, agncy):
+            for x in brf.comm:
+                if x.agency == agncy + " Tower":
                     return x.uhf
             return ""
 
@@ -574,9 +577,6 @@ class Briefing:
                     return x.uhf
             return ""
             
-        def init_ils(self, brf, agncy):
-            return ""
-
         def init_agency(self, brf, agncy):
             for x in brf.comm:
                 if x.agency == agncy + " Tower":

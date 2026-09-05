@@ -5,27 +5,24 @@
 </table>
 <table width=100% id="airbase" class="hidable">
     <colgroup>
-        <col style="width:26%;">
-        <col style="width:26%;">
-        <col style="width:26%;">
-        <col style="width:11%;">
-        <col style="width:11%;">
+        <col style="width:25%;">
+        <col style="width:25%;">
+        <col style="width:25%;">
+        <col style="width:25%;">
     </colgroup>
     <tbody>
         <tr>
-	  <th>Loc</th>
+          <th>Loc</th>
           <th>Ground</th>
+          <th>Tower</th>
           <th>Approach</th>
-          <th>TCN</th>
-          <th>ILS</th>
         </tr>
         {% for i in range(3)%}
         <tr>
-	    <td>{{ airbases[i].agency }}</td>
+            <td>{{ airbases[i].agency }}</td>
             <td>{{ airbases[i].ground }}</td>
+            <td>{{ airbases[i].tower }}</td>
             <td>{{ airbases[i].approach }}</td>
-            <td contenteditable="true" class="editable" id="airbase_{{2*i}}">{{ airbases[i].tcn }}</td>
-            <td contenteditable="true" class="editable" id="airbase_{{2*i+1}}">{{ airbases[i].ils }}</td>
         </tr>
         {% endfor %}
     </tbody>
