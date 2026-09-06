@@ -18,10 +18,7 @@ The main difference is that I wanted an open source tool that has ~~minimal~~ re
 - [x] Parse binary save file data.
 - [x] Edit DTC defaults.
 - [x] Compute the parameters for pop-up attacks and set offset aimpoints.
-
-
-#### Possible future features
-- [ ] Support adding airport and approach charts.
+- [x] Support adding generated airport and approach charts.
 
 ## Usage
 ### Using the provided executable
@@ -101,6 +98,21 @@ The map images usually come with the theater install. For example (all folders a
 
 ### Reference images
 Targets section of the kneeboard can be used to upload target reference images. The images can also be pasted in all editable briefing fields.
+
+### Charts
+Starting with the version 1.2, the app can generate ground, parking and "approach" charts from BMS data, building upon oakdesign's [OpenTaxiway](https://github.com/oakdesign/OpenTaxiway/) tool. Ground and parking charts functionally correspond to the automatically generated charts distributed with the official BMS theaters (but can be generated for any theater automatically). The "approach" chart are currently a bit "gamified": they contain only the basic topographic information as well as relevant TCN/ILS info.
+
+The new corresponding ```config.ini``` option syntax is as follows:
+```
+[pages]
+charts = departure_ground, departure_parking, departure_local, arrival_ground, arrival_parking, arrival_local, alternate_ground, alternate_parking, alternate_local
+```
+As many other options this can be set in the UI.
+
+Charts need to be generated for each airfield, which may take some time (~5-10 seconds per chart), but each chart is only done once and is saved for later use. 
+
+<img src="examples/gimpo_ground.png" alt="left" width="40%"/>
+<img src="examples/gimpo_topo.png" alt="right" width="40%"/>
 
 ### Launch options
 - ```-p PORT```: set the port (default: 8000).
