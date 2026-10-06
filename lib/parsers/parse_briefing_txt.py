@@ -609,7 +609,7 @@ class Briefing:
             if line_contents == None:
                 return ""
             else:
-                return line_contents.strip("\t").split("\t")[0]
+                return line_contents.strip("\t").split("\t")[0].strip(" :")
 
         def init_type(self, line_contents):
             if line_contents == None:
