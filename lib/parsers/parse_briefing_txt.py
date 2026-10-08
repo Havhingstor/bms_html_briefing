@@ -629,6 +629,7 @@ class Briefing:
         else:
             try:
                 start = next(i for i, l in enumerate(file_contents) if l.strip("\t \n) ").startswith("Support"))
+                # Match either ROE or Emergency, as ROE section is not present in a TE briefing
                 end = next(i for i, l in enumerate(file_contents) if l.strip("\t \n) ").startswith(("Rules of Engagement", "Emergency")))
                 s = list(filter(lambda l: l != "", [x.strip(" \n ") for x in file_contents[start+4:end-1]]))
                 return [self.Support(x) for x in s]
