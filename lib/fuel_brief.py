@@ -1,4 +1,4 @@
-"""Match briefing/DTC/CAM inputs and attach minimum-return-fuel cells."""
+"""Attach minimum-return-fuel cells using DTC coordinates and a CAM fuel profile."""
 from __future__ import annotations
 
 import math
@@ -97,33 +97,10 @@ def build_fuel_plan(*, summary: Any, briefing: Any, dtc: Any, bms_base_dir: str,
             raise ValueError("The DTC does not uniquely identify home and alternate.")
         landing_number = landings[0]
         return_coords = [_coordinates(points[number]) for number in landings]
-        cam_points = {}
-        for point in flight.get("steerpoints", []):
-            index = _integer(point.get("index"))
-            if index is None or index + 1 in cam_points:
-                raise ValueError("Saved steerpoint numbers are invalid or duplicated.")
-            cam_points[index + 1] = point
-        # Campaign coordinates are east/north kilometers, DTC coordinates are
-        # north/east feet. Allow one campaign grid cell for quantization.
-        for number, point in points.items():
-            if number > landing_number and number not in landings:
-                continue
-            saved = cam_points.get(number)
-            if saved is None:
-                raise ValueError("The DTC route does not match the loaded save.")
-            north, east = _coordinates(point)
-            saved_east, saved_north = float(saved["x"]), float(saved["y"])
-            if not math.isfinite(saved_east) or not math.isfinite(saved_north):
-                raise ValueError("Saved waypoint coordinates are invalid.")
-            if (abs(east * 0.3048 / 1000 - saved_east) > 1.0
-                    or abs(north * 0.3048 / 1000 - saved_north) > 1.0):
-                raise ValueError("The DTC route differs from the loaded save; reload matching inputs.")
-            saved_action, dtc_action = _integer(saved.get("action")), _integer(_attr(point, "action"))
-            if saved_action != dtc_action and not {saved_action, dtc_action} <= _LAND_ACTIONS:
-                raise ValueError("The DTC and saved waypoint actions differ.")
 
+        # The user selects the matching mission files. Route coordinates and
+        # return destinations come solely from DTC; CAM supplies aircraft data.
         seen = set()
-        previous = None
         for row in rows:
             number = _integer(_attr(row, "number"))
             if number is None or number in seen:
@@ -136,19 +113,6 @@ def build_fuel_plan(*, summary: Any, briefing: Any, dtc: Any, bms_base_dir: str,
             if point is None:
                 raise ValueError("The briefing and DTC steerpoint numbers differ.")
             coords = _coordinates(point)
-            # briefing.txt contains leg distances, not coordinates. Check its
-            # rounded distances as well when adjacent rows supply them.
-            if previous is not None and previous[0] + 1 == number:
-                distance_text = str(_attr(row, "distance", "")).strip()
-                if distance_text and distance_text != "--":
-                    try:
-                        printed = float(distance_text)
-                    except ValueError:
-                        raise ValueError("Briefing leg distance is invalid.") from None
-                    actual = math.dist(previous[1], coords) / FEET_PER_NM
-                    if not math.isfinite(printed) or abs(printed - actual) > max(1.0, actual * 0.02):
-                        raise ValueError("Briefing leg distances differ from the DTC route.")
-            previous = number, coords
             if (_integer(_attr(point, "action")) in {1, *_LAND_ACTIONS}
                     or str(_attr(row, "description", "")).casefold() in {"takeoff", "land"}):
                 # Airport rows have no return-fuel figure, even with valid inputs.
@@ -162,11 +126,9 @@ def build_fuel_plan(*, summary: Any, briefing: Any, dtc: Any, bms_base_dir: str,
                 continue
             cell["value"] = fuel
             cell["tooltip"] = ASSUMPTIONS
-        if landing_number not in seen:
-            raise ValueError("The planned landing steerpoint is missing from the briefing.")
         return result
     except (ValueError, TypeError, KeyError, FuelModelError) as exc:
-        # Never leave partly computed values after a route mismatch.
+        # Never leave partly computed values when required inputs are invalid.
         for cell in cells.values():
             cell["value"] = None
         return unavailable(str(exc))
