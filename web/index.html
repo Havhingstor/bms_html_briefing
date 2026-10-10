@@ -1970,7 +1970,7 @@
       return cw.document.getElementById(CAM_PREVIEW_PACKAGE_QUERY_ID);
     }
 
-    function clearSavedCamRenderedValues({ clearBullseye = false, clearSupportPackage = false } = {}) {
+    function clearSavedCamRenderedValues({ clearBullseye = false, clearSupportPackage = false, clearLaserCodes = false } = {}) {
       const saved = getSavedEdits();
       if (clearBullseye) {
         delete saved.bullseyePos;
@@ -1980,6 +1980,11 @@
       }
       if (clearSupportPackage) {
         CAM_SUPPORT_CELL_IDS.forEach((id) => {
+          delete saved[id];
+        });
+      }
+      if (clearLaserCodes) {
+        ["roster_lead_3", "roster_2wing_3", "roster_3elmnt_3", "roster_4wing_3"].forEach((id) => {
           delete saved[id];
         });
       }
@@ -3148,7 +3153,7 @@
           if (!silent) log(`CAM warnings: ${camData.warnings.join(" | ")}`);
         }
         const selectedIndex = Number.isFinite(response.selected_package_index) ? response.selected_package_index : null;
-        clearSavedCamRenderedValues({ clearBullseye: true, clearSupportPackage: true });
+        clearSavedCamRenderedValues({ clearBullseye: true, clearSupportPackage: true, clearLaserCodes: true });
         clearSavedCamMapFlightOverlays();
         saveCamSupportPackageIndex(selectedIndex);
         const overrides = currentOverrides();
@@ -3192,7 +3197,7 @@
         if (query) query.value = "";
         const select = getPreviewCamPackageSelect();
         if (select) select.value = "";
-        clearSavedCamRenderedValues({ clearBullseye: true, clearSupportPackage: true });
+        clearSavedCamRenderedValues({ clearBullseye: true, clearSupportPackage: true, clearLaserCodes: true });
         clearSavedCamMapFlightOverlays();
         resetSavedCamSelection({ clearStoredPath: false, clearSelect: false });
         if (refreshPreviewAfter) {
