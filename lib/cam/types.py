@@ -208,6 +208,7 @@ class SummaryFlight(TypedDict):
     aircraft_members: list[SummaryAircraftMember]
     steerpoints: list[UniWaypointView]
     l16: SummaryL16Record | dict[str, int]
+    laser_codes: tuple[int, ...]
 
 
 class SummaryPackage(TypedDict):

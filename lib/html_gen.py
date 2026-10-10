@@ -136,6 +136,33 @@ def _page_contents_for_render(conf, brief_summary = None):
 
 
 
+def _load_laser_codes(brf: Briefing, brief_summary: dict | None):
+    """Load the laser codes, which were stored in the .cam file, into the rosters of our package."""
+    if brief_summary is None:
+        return
+    packages = brief_summary["packages"]
+    if packages is None:
+        return
+    our_num  = int(getattr(brf.overview, "package_id"))
+    for package in packages:
+        package_number = package["package_number"]
+        if our_num != package_number:
+            continue
+        for flight_json in package["flights"]:
+            flight_num_json = flight_json["flight_number"]
+            laser_codes = flight_json['laser_codes']
+            for flight_brf in brf.package:
+                flight_num_brf = int(getattr(flight_brf, "flight"))
+                if flight_num_json != flight_num_brf:
+                    continue
+                roster = flight_brf.roster
+                for idx, name in enumerate(["lead", "wing", "element", "four"]):
+                    if getattr(roster, name) != "":
+                        write_attr = name + "_laser"
+                        setattr(roster, write_attr, laser_codes[idx])
+                break
+        break
+
 
 def generate_html_file(
     conf,
@@ -251,6 +278,8 @@ def generate_html_file(
         atis = build_departure_atis(
             summary=brief_summary, briefing=brf, dtc=ci, bms_conf=bms_conf,
         ) if any('atis' in page for page in page_contents) else {}
+
+        _load_laser_codes(brf, brief_summary)
 
         logo_present = os.path.isfile(os.path.join(script_dir, "assets", "logo.png"))
 
