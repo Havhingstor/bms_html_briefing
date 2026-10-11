@@ -52,7 +52,7 @@ def register_chart_routes(app: FastAPI) -> None:
             operation="charts",
             title="Generating charts",
             message="Resolving selected charts...",
-            note="Only done once per chart. Only runs again when the source data or chart generator updates.",
+            note="Only need to run once per chart. Only need to run again when the source data or chart generator updates.",
         )
         try:
             plan = app.state.chart_service.build_plan(

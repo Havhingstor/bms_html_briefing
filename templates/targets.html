@@ -49,9 +49,9 @@
     <thead>
       <tr>
 	  <th class="header"></th>
-	  <th class="header">TGT 1: <button type="button" class="refreshButton target-ref-browse" onclick="event.stopPropagation(); document.getElementById('tgt1Input').click();">Browse</button><input type="file" accept="image/*" id="tgt1Input" class="imageFileInput target-ref-input"></th>
-	  <th class="header">TGT 2: <button type="button" class="refreshButton target-ref-browse" onclick="event.stopPropagation(); document.getElementById('tgt2Input').click();">Browse</button><input type="file" accept="image/*" id="tgt2Input" class="imageFileInput target-ref-input"></th>
-	  <th class="header">MISC: <button type="button" class="refreshButton target-ref-browse" onclick="event.stopPropagation(); document.getElementById('tgt3Input').click();">Browse</button><input type="file" accept="image/*" id="tgt3Input" class="imageFileInput target-ref-input"></th>
+	  <th class="header">TGT 1: <button title="Load an image into this slot" type="button" class="refreshButton target-ref-browse" onclick="event.stopPropagation(); document.getElementById('tgt1Input').click();">Browse</button><input type="file" accept="image/*" id="tgt1Input" class="imageFileInput target-ref-input"></th>
+	  <th class="header">TGT 2: <button title="Load an image into this slot" type="button" class="refreshButton target-ref-browse" onclick="event.stopPropagation(); document.getElementById('tgt2Input').click();">Browse</button><input type="file" accept="image/*" id="tgt2Input" class="imageFileInput target-ref-input"></th>
+	  <th class="header">MISC: <button title="Load an image into this slot" type="button" class="refreshButton target-ref-browse" onclick="event.stopPropagation(); document.getElementById('tgt3Input').click();">Browse</button><input type="file" accept="image/*" id="tgt3Input" class="imageFileInput target-ref-input"></th>
       </tr>
     </thead>
     <tbody>
@@ -68,7 +68,7 @@
 	<td contenteditable="true" class="editable" id="targets_6"></td>
       </tr>
       <tr id="refImageRow">
-	<td class="header">REF. <button class="refreshButton" onclick='removeRefImg()'>⟳</button></td>
+	<td class="header">REF. <button title="Clear all reference images" class="refreshButton" onclick='removeRefImg()'>⟳</button></td>
 	<td contenteditable="true" class="editable target-ref-cell" id="tgt1Ref"></td>
 	<td contenteditable="true" class="editable target-ref-cell" id="tgt2Ref"></td>
 	<td contenteditable="true" class="editable target-ref-cell" id="tgt3Ref"></td>

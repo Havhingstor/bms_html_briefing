@@ -44,13 +44,13 @@
         <th class="header" scope="row">Misc.</th>
         <td id="admin_misc">{{ stores('misc') }}</td>
         <td colspan="2" aria-hidden="true"></td>
-        <th class="header" scope="row">VHF <button class="refreshButton" style="font-size:inherit;width:1.4em;padding:0;line-height:1;vertical-align:middle" onclick='restoreDefaultAtId("vhf")'>⟳</button></th>
+        <th class="header" scope="row">VHF <button title="Restore default VHF channels" class="refreshButton" style="font-size:inherit;width:1.4em;padding:0;line-height:1;vertical-align:middle" onclick='restoreDefaultAtId("vhf")'>⟳</button></th>
         <td contenteditable="true" class="editable vhf" id="admin_3">{% for i in range(package_size) if package[i].roster.own %}{{i+15}}{% endfor %}</td>
         <th class="header" scope="row">XMIT</th>
         <td contenteditable="true" class="editable" id="admin_7"></td>
       </tr>
       <tr>
-        <th class="header" scope="row">Tanks</th>
+        <th class="header nowrap" scope="row">Tanks</th>
         <td id="admin_tanks">{{ stores('tanks') }}</td>
         <td colspan="2" aria-hidden="true"></td>
         <th class="header nowrap" scope="row">UHF (Tac.)</th>

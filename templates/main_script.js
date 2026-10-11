@@ -260,8 +260,8 @@ function reloadFromFiles() {
     return "false";
 }
 
-function resetContenteditables() {
-    if (confirm("Are you sure? This will overwrite all changes.")){
+async function resetContenteditables() {
+    if (await window.InterfaceUI.confirm({ title: "Reset", message: "Are you sure? This will overwrite all changes." })) {
         window.dtcFieldStore.reset();
         localStorage.removeItem('contenteditables');
         localStorage.setItem("onrefresh", "reset");

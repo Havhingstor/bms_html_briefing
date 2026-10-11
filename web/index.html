@@ -606,121 +606,37 @@
 
     .chart-role-grid {
       display: grid;
-      gap: 0.7rem;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.3rem;
     }
 
     .chart-role-group {
-      border: 1px solid rgba(58, 167, 255, 0.25);
-      padding: 0.55rem;
+      min-width: 0;
+      padding: 0.35rem 0;
+    }
+
+    section.mfd-box #generate-charts-btn {
+      position: absolute;
+      bottom: -0.7rem;
     }
 
     .chart-option {
+      color: var(--text);
       display: grid;
-      grid-template-columns: auto 1fr auto;
+      grid-template-columns: auto 1fr;
       align-items: center;
-      gap: 0.45rem;
+      gap: 0.3rem;
       margin-top: 0.35rem;
     }
 
-    .chart-state {
-      font-family: "IBMPlexMono";
-      font-size: 0.72rem;
-      text-transform: uppercase;
-      color: rgba(212, 212, 212, 0.72);
+    .chart-option input[type="checkbox"] {
+      margin: 0;
     }
 
-    .chart-state.generated { color: #8ee6a8; }
-    .chart-state.failed, .chart-state.stale { color: #ff9a9a; }
-    .chart-state.generating { color: #80bfff; }
-
-    .progress-dialog {
-      box-sizing: border-box;
-      width: min(34rem, calc(100vw - 2rem));
-      max-width: calc(100vw - 2rem);
-      overflow-x: hidden;
-      color: var(--text);
-      background: var(--bg);
-      border: 1px solid #ffffff;
-      box-shadow: var(--shadow);
-      padding: 1.25rem;
-      font-family: "Viper";
-    }
-
-    .progress-dialog::backdrop { background: rgba(0, 0, 0, 0.72); }
-
-    .progress-dialog h3 {
-      margin: 0 0 0.8rem;
-      color: var(--line);
-      font-family: "Viper";
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      overflow-wrap: anywhere;
-    }
-
-    .progress-message {
-      min-height: 1.5em;
-      margin: 0 0 0.75rem;
-      font-family: "IBMPlexMono";
-      line-height: 1.45;
-      overflow-wrap: anywhere;
-    }
-
-    .progress-dialog progress {
-      box-sizing: border-box;
-      display: block;
-      min-width: 0;
-      width: 100%;
-      height: 1.35rem;
-      accent-color: var(--line);
-    }
-
-    .progress-dialog progress::-webkit-progress-bar {
-      background: #000000;
-      border: 1px solid #ffffff;
-    }
-
-    .progress-dialog progress::-webkit-progress-value {
-      background: linear-gradient(90deg, #217ccc, #62bdff);
-    }
-
-    .progress-meta {
-      display: flex;
-      justify-content: space-between;
-      gap: 1rem;
-      margin-top: 0.45rem;
-      color: rgba(212, 212, 212, 0.78);
-      font-family: "IBMPlexMono";
-      font-size: 0.78rem;
-    }
-
-    .progress-note {
-      margin: 0.9rem 0 0;
-      padding-top: 0.75rem;
-      border-top: 1px solid rgba(58, 167, 255, 0.25);
-      color: rgba(212, 212, 212, 0.82);
-      font-family: "IBMPlexMono";
-      font-size: 0.88rem;
-      line-height: 1.45;
-      overflow-wrap: anywhere;
-    }
-
-    .progress-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 0.5rem;
-      margin-top: 1rem;
-    }
-
-    .progress-actions button {
-      padding: 0.35rem 0.65rem;
-      border: 1px solid #ffffff;
-      background: var(--bg);
-      color: #ffffff;
-    }
-
-    .progress-actions button:hover {
-      color: var(--line);
-      border-color: var(--line);
+    .chart-status-marker {
+      font-size: 0.75em;
+      line-height: 0;
+      letter-spacing: 0;
     }
 
     body.is-initializing .page-wrap {
@@ -1022,83 +938,6 @@
       letter-spacing: inherit;
     }
 
-    .help-dialog[hidden] {
-      display: none !important;
-    }
-
-    .help-dialog {
-      position: fixed;
-      inset: 0;
-      z-index: 1000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 1rem;
-    }
-
-    .help-backdrop {
-      position: absolute;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.72);
-    }
-
-    .help-panel {
-      position: relative;
-      width: min(620px, 100%);
-      max-height: min(80vh, 720px);
-      overflow-y: auto;
-      padding: 1rem 1.15rem;
-      border: 1px solid #ffffff;
-      background: var(--bg);
-      box-shadow: var(--shadow);
-      outline: none;
-    }
-
-    .help-panel-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 1rem;
-      margin-bottom: 0.75rem;
-    }
-
-    .help-panel h2 {
-      margin: 0;
-      color: var(--line);
-      font-size: 1.2rem;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .help-close-btn {
-      flex: 0 0 auto;
-      padding: 0.2rem 0.55rem;
-      background: var(--bg);
-      color: #ffffff;
-      border: 1px solid #ffffff;
-    }
-
-    .help-close-btn:hover,
-    .help-close-btn:focus-visible {
-      color: var(--line);
-      outline: none;
-    }
-
-    .help-panel ol,
-    .help-panel p {
-      margin: 0 0 0.85rem;
-      font-family: "IBMPlexMono";
-      line-height: 1.45;
-    }
-
-    .help-panel ol {
-      padding-left: 1.5rem;
-    }
-
-    .help-panel li {
-      margin-bottom: 0.35rem;
-    }
-
     .shutdown-screen {
       min-height: 100vh;
       display: flex;
@@ -1151,7 +990,8 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="/templates/interface.css">
+  <link rel="stylesheet" href="/templates/interface.css" media="screen">
+  <script src="/templates/interface.js"></script>
   <script src="/templates/dtc_fields.js"></script>
   <script src="/templates/popup_briefing.js"></script>
   <script>window.dtcFieldStore = DtcFields.createStore(localStorage);</script>
@@ -1164,8 +1004,8 @@
         <h1>Falcon BMS HTML Briefing</h1>
       </div>
       <div class="badge-row">
-        <button id="toggle-toolbar" type="button">Hide toolbar</button>
-        <button id="help-btn" type="button" aria-controls="help-dialog" aria-expanded="false">Help</button>
+        <button id="toggle-toolbar" type="button" title="Show or hide the settings panel">Hide toolbar</button>
+        <button id="help-btn" type="button" aria-controls="help-dialog" aria-expanded="false" title="Show basic usage instructions">Help</button>
         <div class="badge" id="file-status" title="Briefing/callsign file changes">
           <span>FILES</span>
         </div>
@@ -1183,15 +1023,15 @@
       <div class="main-column">
         <section class="mfd-box mfd-toolbar no-print">
           <div class="button-row controls-row mfd-anchor">
-            <button id="generate-btn-main" class="generate-brief-btn">Gen brf</button>
-            <button id="save-edits-btn">Save</button>
-            <button id="load-edits-btn">Load</button>
-            <button id="reset-edits-btn">Reset</button>
-            <button id="dtc-reload-btn" hidden>Reload</button>
+            <button id="generate-btn-main" class="generate-brief-btn" title="(Re-)generate briefing from BMS files">Gen brf</button>
+            <button id="save-edits-btn" title="Save user input">Save</button>
+            <button id="load-edits-btn" title="Load user input">Load</button>
+            <button id="reset-edits-btn" title="Reset all user input">Reset</button>
+            <button id="dtc-reload-btn" title="Reload DTC data from the callsign .ini file" hidden>Reload</button>
           </div>
           <div class="view-tabs view-tabs-toolbar" id="main-view-tabs">
-            <button id="briefing-view-btn" type="button">Briefing</button>
-            <button id="dtc-view-btn" type="button">DTC</button>
+            <button id="briefing-view-btn" type="button" title="Switch to the Briefing tab">Briefing</button>
+            <button id="dtc-view-btn" type="button" title="Switch to the DTC tab">DTC</button>
           </div>
         </section>
 
@@ -1208,18 +1048,18 @@
 
         <section class="mfd-box mfd-flow no-print">
           <div class="chain mfd-anchor">
-            <button id="generate-btn-output" class="generate-brief-btn">Gen brf</button>
-            <button id="pdf-btn">Gen PDF</button>
-            <button id="open-pdf-btn">Open PDF</button>
-            <button id="export-btn">Export</button>
+            <button id="generate-btn-output" class="generate-brief-btn" title="(Re-)generate briefing from BMS files">Gen brf</button>
+            <button id="pdf-btn" title="Generate PDF from the current briefing">Gen PDF</button>
+            <button id="open-pdf-btn" title="Open the generated PDF">Open PDF</button>
+            <button id="export-btn" title="Export the briefing as kneeboard .dds files">Export</button>
             <button id="auto-export-mode-btn" class="auto-export-mode-btn" type="button">AUTO-EXPORT<br>OFF</button>
           </div>
         </section>
 
         <section class="mfd-box mfd-kneeboard-order no-print">
           <div class="mfd-anchor mfd-anchor-right no-print">
-            <button id="refresh-kneeboard-order-btn" type="button">Refresh</button>
-            <button id="save-kneeboard-order-btn" type="button">Save order</button>
+            <button id="refresh-kneeboard-order-btn" type="button" title="Refresh the kneeboard page list">Refresh</button>
+            <button id="save-kneeboard-order-btn" type="button" title="Save kneeboard page selection and order">Save order</button>
           </div>
           <div class="panel-head">
             <h3 class="heading-zero">Kneeboard export order</h3>
@@ -1278,7 +1118,7 @@
 
         <section class="mfd-box mfd-settings">
           <div class="mfd-anchor mfd-anchor-right no-print">
-            <button type="submit" form="config-form" title="Save application settings">Save</button>
+            <button type="submit" form="config-form" title="Save settings to the app config file">Save</button>
           </div>
           <div class="panel-head">
             <h3 class="heading-zero">Settings</h3>
@@ -1316,7 +1156,7 @@
 
         <section class="mfd-box mfd-settings mfd-with-bottom-btn no-print">
           <div class="mfd-anchor mfd-anchor-right no-print">
-            <button id="save-charts-btn" type="button">Save</button>
+            <button id="save-charts-btn" type="button" title="Save chart type selection to the app config file">Save</button>
           </div>
           <div class="panel-head">
             <h3 class="heading-zero">Charts</h3>
@@ -1324,30 +1164,30 @@
           <div id="chart-options" class="chart-role-grid">
             <div class="chart-role-group">
               <label>Departure</label>
-              <label class="chart-option"><input type="checkbox" value="departure_ground"><span>Ground</span><span class="chart-state" data-chart-status="departure_ground">missing</span></label>
-              <label class="chart-option"><input type="checkbox" value="departure_parking"><span>Parking</span><span class="chart-state" data-chart-status="departure_parking">missing</span></label>
-              <label class="chart-option"><input type="checkbox" value="departure_local"><span>Local</span><span class="chart-state" data-chart-status="departure_local">missing</span></label>
+              <label class="chart-option"><input type="checkbox" value="departure_ground"><span>Ground<sup class="chart-status-marker" aria-hidden="true" hidden>*</sup></span></label>
+              <label class="chart-option"><input type="checkbox" value="departure_parking"><span>Parking<sup class="chart-status-marker" aria-hidden="true" hidden>*</sup></span></label>
+              <label class="chart-option"><input type="checkbox" value="departure_local"><span>Local<sup class="chart-status-marker" aria-hidden="true" hidden>*</sup></span></label>
             </div>
             <div class="chart-role-group">
               <label>Arrival</label>
-              <label class="chart-option"><input type="checkbox" value="arrival_ground"><span>Ground</span><span class="chart-state" data-chart-status="arrival_ground">missing</span></label>
-              <label class="chart-option"><input type="checkbox" value="arrival_parking"><span>Parking</span><span class="chart-state" data-chart-status="arrival_parking">missing</span></label>
-              <label class="chart-option"><input type="checkbox" value="arrival_local"><span>Local</span><span class="chart-state" data-chart-status="arrival_local">missing</span></label>
+              <label class="chart-option"><input type="checkbox" value="arrival_ground"><span>Ground<sup class="chart-status-marker" aria-hidden="true" hidden>*</sup></span></label>
+              <label class="chart-option"><input type="checkbox" value="arrival_parking"><span>Parking<sup class="chart-status-marker" aria-hidden="true" hidden>*</sup></span></label>
+              <label class="chart-option"><input type="checkbox" value="arrival_local"><span>Local<sup class="chart-status-marker" aria-hidden="true" hidden>*</sup></span></label>
             </div>
             <div class="chart-role-group">
               <label>Alternate</label>
-              <label class="chart-option"><input type="checkbox" value="alternate_ground"><span>Ground</span><span class="chart-state" data-chart-status="alternate_ground">missing</span></label>
-              <label class="chart-option"><input type="checkbox" value="alternate_parking"><span>Parking</span><span class="chart-state" data-chart-status="alternate_parking">missing</span></label>
-              <label class="chart-option"><input type="checkbox" value="alternate_local"><span>Local</span><span class="chart-state" data-chart-status="alternate_local">missing</span></label>
+              <label class="chart-option"><input type="checkbox" value="alternate_ground"><span>Ground<sup class="chart-status-marker" aria-hidden="true" hidden>*</sup></span></label>
+              <label class="chart-option"><input type="checkbox" value="alternate_parking"><span>Parking<sup class="chart-status-marker" aria-hidden="true" hidden>*</sup></span></label>
+              <label class="chart-option"><input type="checkbox" value="alternate_local"><span>Local<sup class="chart-status-marker" aria-hidden="true" hidden>*</sup></span></label>
             </div>
           </div>
-          <button id="generate-charts-btn" class="mfd-bottom-btn" type="button">Generate charts</button>
+          <button id="generate-charts-btn" class="mfd-bottom-btn" type="button" title="(Re-)generate selected charts">Generate charts</button>
         </section>
 
         <section class="mfd-box mfd-settings mfd-with-bottom-btn no-print">
           <div class="mfd-anchor mfd-anchor-right no-print">
-            <button id="cam-load-btn" type="button" title="Load selected campaign save" disabled>Load</button>
-            <button id="cam-unload-btn" type="button" title="Unload current campaign save" disabled>Unload</button>
+            <button id="cam-load-btn" type="button" title="Load BMS save file" disabled>Load</button>
+            <button id="cam-unload-btn" type="button" title="Unload BMS save file" disabled>Unload</button>
           </div>
           <div class="panel-head">
             <h3 class="heading-zero">SAVE FILE</h3>
@@ -1361,13 +1201,13 @@
             </div>
           </div>
           <div class="mfd-footer-anchor no-print">
-            <button id="cam-refresh-btn" type="button" title="Refresh campaign save list">Refresh</button>
+            <button id="cam-refresh-btn" type="button" title="Refresh file the Campaign folder file list">Refresh</button>
           </div>
         </section>
 
         <section class="mfd-box mfd-theater mfd-with-bottom-btn">
           <div class="mfd-anchor mfd-anchor-right no-print">
-            <button id="save_theater_btn" type="button" title="Save theater settings">Save</button>
+            <button id="save_theater_btn" type="button" title="Save theater settings to the app config file">Save</button>
           </div>
           <div class="panel-head">
             <h3 class="heading-zero">Theater</h3>
@@ -1386,7 +1226,7 @@
               <input class="interface-text-input" id="map_file_field" placeholder="/path/to/map.png">
             </div>
           </div>
-          <button id="copy_to_kto_btn" class="auto-export-mode-btn mfd-bottom-btn" type="button">COPY TO KTO<br>OFF</button>
+          <button id="copy_to_kto_btn" class="auto-export-mode-btn mfd-bottom-btn" type="button" title="Copy kneeboard .dds files into the default KTO folder in addition to the theater folder. May be required for some airframes. Is OFF.">COPY TO KTO<br>OFF</button>
         </section>
         <div class="settings-meta">
           <span id="app-version">v__APP_VERSION__</span><span id="app-latest" hidden> (<a id="app-latest-link" href="" target="_blank" rel="noopener noreferrer"></a>)</span>
@@ -1397,12 +1237,10 @@
     </div>
   </div>
 
-  <div id="help-dialog" class="help-dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" hidden>
-    <div class="help-backdrop" data-help-close></div>
-    <div class="help-panel" tabindex="-1">
-      <div class="help-panel-head">
-        <h2 id="help-title">Basic Usage</h2>
-        <button id="help-close-btn" class="help-close-btn" type="button" aria-label="Close help">X</button>
+  <dialog id="help-dialog" class="interface-dialog" aria-labelledby="help-title">
+      <div class="interface-dialog-head">
+        <h2 id="help-title" class="interface-dialog-title">Basic Usage</h2>
+        <button id="help-close-btn" class="interface-button" type="button" aria-label="Close help">X</button>
       </div>
       <ol>
         <li>Open the mission in the 2D map in BMS.</li>
@@ -1416,22 +1254,10 @@
       <p>You can then select another package to show its info and draw flight paths for other flights on the map.</p>
       <p>DTC sections allow you to set cockpit defaults and offset navigation points.</p>
       <p>For more information, see the provided README.</p>
-    </div>
-  </div>
-
-  <dialog id="chart-preflight-dialog" class="progress-dialog" aria-labelledby="chart-preflight-title">
-    <form method="dialog">
-      <h3 id="chart-preflight-title">Charts need generation</h3>
-      <p id="chart-preflight-message" class="progress-message"></p>
-      <div class="progress-actions">
-        <button value="generate">Generate now</button>
-        <button value="skip">Skip</button>
-      </div>
-    </form>
   </dialog>
 
-  <dialog id="operation-progress-dialog" class="progress-dialog" aria-labelledby="operation-progress-title">
-    <h3 id="operation-progress-title">Working...</h3>
+  <dialog id="operation-progress-dialog" class="interface-dialog" aria-labelledby="operation-progress-title" aria-describedby="operation-progress-message" tabindex="-1">
+    <h3 id="operation-progress-title" class="interface-dialog-title">Working...</h3>
     <p id="operation-progress-message" class="progress-message">Preparing...</p>
     <progress id="operation-progress-bar" max="100" aria-describedby="operation-progress-message"></progress>
     <div class="progress-meta">
@@ -1439,8 +1265,8 @@
       <span id="operation-progress-elapsed">0:00</span>
     </div>
     <p id="operation-progress-note" class="progress-note" hidden></p>
-    <div class="progress-actions">
-      <button id="operation-progress-cancel" type="button" hidden>Stop</button>
+    <div class="interface-dialog-actions">
+      <button id="operation-progress-cancel" class="interface-button" type="button" title="Stop PDF generation" hidden>Stop</button>
     </div>
   </dialog>
 
@@ -1454,7 +1280,6 @@
     const quitAppBtn = document.getElementById("quit-app-btn");
     const helpBtn = document.getElementById("help-btn");
     const helpDialog = document.getElementById("help-dialog");
-    const helpPanel = document.querySelector(".help-panel");
     const helpCloseBtn = document.getElementById("help-close-btn");
     const bmsSelect = document.getElementById("bms_version");
     const availableVersionsInput = document.getElementById("bms_available_versions");
@@ -1481,8 +1306,6 @@
     const chartCheckboxes = Array.from(document.querySelectorAll("#chart-options input[type='checkbox']"));
     const saveChartsBtn = document.getElementById("save-charts-btn");
     const generateChartsBtn = document.getElementById("generate-charts-btn");
-    const chartPreflightDialog = document.getElementById("chart-preflight-dialog");
-    const chartPreflightMessage = document.getElementById("chart-preflight-message");
     const operationProgressDialog = document.getElementById("operation-progress-dialog");
     const operationProgressTitle = document.getElementById("operation-progress-title");
     const operationProgressMessage = document.getElementById("operation-progress-message");
@@ -1675,11 +1498,7 @@
       const showProgressDialog = () => {
         activeProgressShowTimer = null;
         if (activeProgressOperationId !== operationId || !operationProgressDialog) return;
-        if (typeof operationProgressDialog.showModal === "function") {
-          if (!operationProgressDialog.open) operationProgressDialog.showModal();
-        } else {
-          operationProgressDialog.setAttribute("open", "");
-        }
+        InterfaceUI.openDialog(operationProgressDialog, { dismissible: false, focus: operationProgressDialog });
       };
       const requestedDelay = Number(options.showDelay);
       const showDelay = Number.isFinite(requestedDelay) && requestedDelay >= 0 ? requestedDelay : 200;
@@ -2024,9 +1843,7 @@
       if (briefingScrollModeBtn) {
         briefingScrollModeBtn.classList.toggle("is-active", isPaged);
         briefingScrollModeBtn.textContent = isPaged ? "PAGED" : "CONTINUOUS";
-        briefingScrollModeBtn.title = isPaged
-          ? "Show one briefing page at a time"
-          : "Show the full continuous briefing";
+        briefingScrollModeBtn.title = "Switch between showing one page at a time and showing the full briefing";
       }
       updatePageShortcutState();
       if (options.applyFrame !== false) {
@@ -2215,7 +2032,7 @@
       if (!copyToKtoBtn) return;
       copyToKtoBtn.classList.toggle("is-active", copyToKtoEnabled);
       copyToKtoBtn.innerHTML = `COPY TO KTO<br>${copyToKtoEnabled ? "ON" : "OFF"}`;
-      copyToKtoBtn.title = copyToKtoEnabled ? "Copy to KTO enabled" : "Copy to KTO disabled";
+      copyToKtoBtn.title = `Copy kneeboard .dds files into the default KTO folder in addition to the theater folder. May be required for some airframes. Is ${copyToKtoEnabled ? "ON" : "OFF"}.`;
     }
 
     async function fetchJSON(url, options = {}) {
@@ -2288,46 +2105,19 @@
       document.title = "Application Stopped";
     }
 
-    let helpPreviousFocus = null;
-
     function openHelpDialog() {
       if (!helpDialog || !helpBtn) return;
-      helpPreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      helpDialog.hidden = false;
+      InterfaceUI.openDialog(helpDialog, { focus: helpCloseBtn });
       helpBtn.setAttribute("aria-expanded", "true");
-      window.requestAnimationFrame(() => {
-        if (helpPanel) helpPanel.focus();
-      });
     }
 
     function closeHelpDialog() {
-      if (!helpDialog || helpDialog.hidden) return;
-      helpDialog.hidden = true;
-      if (helpBtn) helpBtn.setAttribute("aria-expanded", "false");
-      if (helpPreviousFocus && typeof helpPreviousFocus.focus === "function") {
-        helpPreviousFocus.focus();
-      }
-      helpPreviousFocus = null;
+      if (helpDialog?.open) helpDialog.close();
     }
 
-    if (helpBtn) {
-      helpBtn.addEventListener("click", openHelpDialog);
-    }
-    if (helpCloseBtn) {
-      helpCloseBtn.addEventListener("click", closeHelpDialog);
-    }
-    if (helpDialog) {
-      helpDialog.addEventListener("click", (event) => {
-        if (event.target instanceof HTMLElement && event.target.dataset.helpClose !== undefined) {
-          closeHelpDialog();
-        }
-      });
-    }
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && helpDialog && !helpDialog.hidden) {
-        closeHelpDialog();
-      }
-    });
+    helpBtn?.addEventListener("click", openHelpDialog);
+    helpCloseBtn?.addEventListener("click", closeHelpDialog);
+    helpDialog?.addEventListener("close", () => helpBtn?.setAttribute("aria-expanded", "false"));
 
     function populateVersionSelect(available, current) {
       const opts = (available || "").split(",").map(v => v.trim()).filter(Boolean);
@@ -2378,7 +2168,10 @@
     async function confirmLocalMapGeneration(nextMapSource) {
       if (nextMapSource !== "local") return true;
       const status = await fetchJSON("/api/map-sources/local-status");
-      return !status.generation_required || window.confirm(LOCAL_MAP_GENERATION_CONFIRM);
+      return !status.generation_required || await InterfaceUI.confirm({
+        title: "Local map",
+        message: LOCAL_MAP_GENERATION_CONFIRM,
+      });
     }
 
     async function loadMapSources() {
@@ -2592,7 +2385,7 @@
           operation: "charts",
           title: "Generating charts",
           message: "Resolving selected charts...",
-          note: "Only done once per chart. Only runs again when the source data or chart generator updates.",
+          note: "Only need to run once per chart. Only need to run again when the source data or chart generator updates.",
           current: null,
           total: null,
           can_cancel: false,
@@ -2762,12 +2555,15 @@
     function renderChartStatus(data) {
       const rows = Array.isArray(data?.selections) ? data.selections : [];
       const byId = new Map(rows.map((row) => [row.id, row]));
-      document.querySelectorAll("[data-chart-status]").forEach((statusEl) => {
-        const row = byId.get(statusEl.dataset.chartStatus);
-        const state = row?.state || "missing";
-        statusEl.textContent = row?.display_state || state;
-        statusEl.className = `chart-state ${state}`;
-        statusEl.title = row?.message || (row?.airfield ? `${row.airfield}${row.shared_with?.length ? " (shared artifact)" : ""}` : "");
+      chartCheckboxes.forEach((checkbox) => {
+        const row = byId.get(checkbox.value);
+        const label = checkbox.closest(".chart-option");
+        const needsGeneration = ["missing", "stale", "failed", "generating"].includes(row?.state);
+        label.querySelector(".chart-status-marker").hidden = !needsGeneration;
+        const description = [row?.display_state || row?.state, row?.message].filter(Boolean).join(": ");
+        label.title = description;
+        checkbox.title = description;
+        checkbox.setAttribute("aria-description", description);
       });
     }
 
@@ -2794,13 +2590,11 @@
 
     function showChartPreflightPrompt(count) {
       const message = `${count} selected chart${count === 1 ? " is" : "s are"} missing, stale, or failed. Generate now?`;
-      if (!chartPreflightDialog || typeof chartPreflightDialog.showModal !== "function") {
-        return Promise.resolve(window.confirm(message));
-      }
-      chartPreflightMessage.textContent = message;
-      return new Promise((resolve) => {
-        chartPreflightDialog.addEventListener("close", () => resolve(chartPreflightDialog.returnValue === "generate"), { once: true });
-        chartPreflightDialog.showModal();
+      return InterfaceUI.confirm({
+        title: "Charts need generation", message,
+        acceptLabel: "Generate now", cancelLabel: "Skip",
+        acceptTitle: "Generate missing or outdated charts",
+        cancelTitle: "Continue without generating charts",
       });
     }
 
@@ -2823,7 +2617,7 @@
           operation: "charts",
           title: "Generating charts",
           message: "Generating missing or updated charts...",
-          note: "Only done once per chart. Only runs again when the source data or chart generator updates.",
+          note: "Only need to run once per chart. Only need to run again when the source data or chart generator updates.",
           current: 0,
           total: needed.length,
           can_cancel: false,
@@ -3259,38 +3053,38 @@
         } else {
           pdfBtn.disabled = exportBusy || layoutBusy;
           pdfBtn.textContent = "Gen PDF";
-          pdfBtn.title = exportBusy ? "Kneeboard export in progress" : "";
+          pdfBtn.title = exportBusy ? "Kneeboard export in progress" : "Generate PDF from the current briefing";
         }
       }
       if (exportBtn) {
         exportBtn.disabled = pipelineBusy;
         exportBtn.title = exportBusy
           ? "Kneeboard export in progress"
-          : (pdfBusy ? "PDF generation in progress" : "");
+          : (pdfBusy ? "PDF generation in progress" : "Export the briefing as kneeboard .dds files");
       }
       if (openPdfBtn) {
         openPdfBtn.disabled = pipelineBusy;
-        openPdfBtn.title = pipelineBusy ? "PDF generation in progress" : "";
+        openPdfBtn.title = pipelineBusy ? "PDF generation in progress" : "Open the generated PDF";
       }
       generateBriefBtns.forEach((btn) => {
         btn.disabled = pipelineBusy;
-        btn.title = pipelineBusy ? "PDF generation in progress" : "";
+        btn.title = pipelineBusy ? "PDF generation in progress" : "(Re-)generate briefing from BMS files";
       });
       if (generateChartsBtn) {
         generateChartsBtn.disabled = pipelineBusy;
-        generateChartsBtn.title = pipelineBusy ? "PDF generation in progress" : "";
+        generateChartsBtn.title = pipelineBusy ? "PDF generation in progress" : "(Re-)generate selected charts";
       }
       if (camLoadBtn) {
         camLoadBtn.disabled = pipelineBusy || !camSaveSelect || camSaveSelect.disabled;
-        camLoadBtn.title = pipelineBusy ? "PDF generation in progress" : "";
+        camLoadBtn.title = pipelineBusy ? "PDF generation in progress" : "Load BMS save file";
       }
       if (camUnloadBtn) {
         camUnloadBtn.disabled = pipelineBusy;
-        camUnloadBtn.title = pipelineBusy ? "PDF generation in progress" : "";
+        camUnloadBtn.title = pipelineBusy ? "PDF generation in progress" : "Unload BMS save file";
       }
       if (camRefreshBtn) {
         camRefreshBtn.disabled = pipelineBusy;
-        camRefreshBtn.title = pipelineBusy ? "PDF generation in progress" : "";
+        camRefreshBtn.title = pipelineBusy ? "PDF generation in progress" : "Refresh file the Campaign folder file list";
       }
     }
 
@@ -3484,7 +3278,7 @@
           const warning = pdfOverflowExportWarning();
           if (source === "auto") {
             log(warning);
-          } else if (!window.confirm(warning)) {
+          } else if (!await InterfaceUI.confirm({ title: "PDF overflow", message: warning })) {
             log("Export cancelled: PDF page overflow");
             return;
           }
@@ -3818,10 +3612,21 @@
       callBriefing("loadChangedData");
       await loadCamUiStateFromEdits();
     });
-    resetEditsBtn?.addEventListener("click", () => {
-      const resetResult = callBriefing("resetContenteditables");
-      pendingBriefingResetFromToolbar = resetResult === "false";
-      if (pendingBriefingResetFromToolbar) layoutDrafts.clear();
+    let resetPending = false;
+    resetEditsBtn?.addEventListener("click", async () => {
+      if (resetPending) return;
+      resetPending = true;
+      let resetResult;
+      try {
+        resetResult = await callBriefing("resetContenteditables");
+      } catch (err) {
+        log(`resetContenteditables failed: ${err.message}`);
+      } finally {
+        resetPending = false;
+      }
+      if (resetResult !== "false") return;
+      pendingBriefingResetFromToolbar = true;
+      layoutDrafts.clear();
       const query = getPreviewCamPackageQuery();
       if (query) query.value = "";
       saveCamSupportPackageIndex(null);
@@ -4236,6 +4041,7 @@
         const button = document.createElement("button");
         button.type = "button";
         button.textContent = `Page ${index + 1}`;
+        button.title = `Show briefing page ${index + 1}`;
         button.addEventListener("click", () => showBriefingPage(index));
         bar.appendChild(button);
       });

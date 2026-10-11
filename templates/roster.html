@@ -2,10 +2,29 @@
 </style>
 <table width=100%>
       <tr>
-<th class="header clickable" onclick="toggleVisHeader(this)" id="roster_header"><span class="arrow">▼</span>Flight {{ overview.callsign }} ({{overview.mission_type}}) #{{overview.package_id}}</th>
+<th class="header clickable" onclick="toggleVisHeader(this)" id="roster_header"><span class="arrow">▼</span>Flight</th>
   </tr>
 </table>
-<table width=100% id="roster" class="hidable">
+<div id="roster" class="hidable">
+<table width="100%" id="roster_info">
+    <colgroup>
+        <col style="width:15%;">
+        <col style="width:20%;">
+        <col style="width:15%;">
+        <col style="width:22%;">
+        <col style="width:15%;">
+        <col style="width:13%;">
+    </colgroup>
+    <tr>
+        <th class="header nowrap" scope="row">CALLSIGN</th>
+        <td>{{ overview.callsign|e }}</td>
+        <th class="header nowrap" scope="row">MISSION</th>
+        <td>{{ overview.mission_type|e }}</td>
+        <th class="header nowrap" scope="row">PACKAGE</th>
+        <td>{{ overview.package_id|e }}</td>
+    </tr>
+</table>
+<table width="100%" id="roster_members">
         <colgroup>
             {% if logo_present %}<col style="width:12%;">{% endif %}
             <col style="width:{% if logo_present %}14%{% else %}16%{% endif %};">
@@ -17,8 +36,8 @@
 	    {% if logo_present %}<th rowspan="6" class="roster-logo-cell" style="vertical-align: middle; text-align: center;"> <img class="roster-logo" src="assets/logo.png" width="100%"></th>{% endif %}
             <th></th>
             <th>Name</th>
-            <th>TCN <button class="refreshButton" onclick='restoreDefaultAtId("tcn")'>⟳</button></th>
-            <th>LSR <button class="refreshButton" onclick='restoreDefaultAtId("lsr")'>⟳</button></th>
+            <th>TCN <button title="Restore default TACAN channels" class="refreshButton" onclick='restoreDefaultAtId("tcn")'>⟳</button></th>
+            <th>LSR <button title="Restore default laser codes" class="refreshButton" onclick='restoreDefaultAtId("lsr")'>⟳</button></th>
         </tr>
       {% for i in range(package_size) %}
       {% if package[i].roster.own %}
@@ -49,3 +68,4 @@
 	{% endif %}
         {% endfor %}
 </table>
+</div>

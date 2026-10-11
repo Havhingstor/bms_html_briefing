@@ -4,19 +4,20 @@
   <meta charset="utf-8">
   <title>DTC Management</title>
   <link rel="stylesheet" href="/templates/style_preview.css">
-  <link rel="stylesheet" href="/templates/interface.css">
   <link rel="stylesheet" href="/dist/leaflet/leaflet.css">
   <script src="/dist/leaflet/leaflet.js"></script>
   <link rel="stylesheet" href="/templates/dtc.css">
   <link rel="stylesheet" href="/templates/dtc_fields.css">
+  <link rel="stylesheet" href="/templates/interface.css" media="screen">
+  <script src="/templates/interface.js" defer></script>
   <script src="/templates/dtc_fields.js"></script>
   <script src="/templates/popup_briefing.js"></script>
 </head>
 <body class="dtc-page">
   <div class="dtc-main-tabs" role="tablist" aria-label="DTC page">
-    <button type="button" class="dtc-tab-button is-active" data-dtc-page-tab="steerpoints">Steerpoints</button>
-    <button type="button" class="dtc-tab-button" data-dtc-page-tab="popup">Pop-up</button>
-    <button type="button" class="dtc-tab-button" data-dtc-page-tab="icp-fcc">ICP/FCC</button>
+    <button title="Switch to the Steerpoints tab" type="button" class="dtc-tab-button is-active" data-dtc-page-tab="steerpoints">Steerpoints</button>
+    <button title="Switch to the Pop-up tab" type="button" class="dtc-tab-button" data-dtc-page-tab="popup">Pop-up</button>
+    <button title="Switch to the ICP/FCC tab" type="button" class="dtc-tab-button" data-dtc-page-tab="icp-fcc">ICP/FCC</button>
   </div>
 
   <section id="dtc-page-steerpoints" class="dtc-section dtc-page-pane">
@@ -206,7 +207,7 @@
           </div>
           <div class="dtc-popup-output" id="dtc-popup-output" role="status" aria-live="polite"></div>
           <div class="dtc-offset-actions">
-            <button type="button" class="dtc-offset-button" id="dtc-popup-apply">SET PUP/OA</button>
+            <button title="Apply calculated PUP and OA to navigation offsets" type="button" class="dtc-offset-button" id="dtc-popup-apply">SET PUP/OA</button>
           </div>
           <div class="dtc-popup-status" id="dtc-popup-status"></div>
         </div>
@@ -219,9 +220,9 @@
             <tr><th class="header">Offset aimpoints <span id="dtc-offset-stpt-label"></span></th></tr>
           </table>
           <div class="dtc-offset-actions">
-            <button type="button" class="dtc-offset-button" id="dtc-add-oa">ADD OA</button>
-            <button type="button" class="dtc-offset-button" id="dtc-vip-toggle">SET AS VIP</button>
-            <button type="button" class="dtc-offset-button" id="dtc-vrp-toggle">SET AS VRP</button>
+            <button title="Add an offset aimpoint to the selected steerpoint" type="button" class="dtc-offset-button" id="dtc-add-oa">ADD OA</button>
+            <button title="Set or unset the selected steerpoint as VIP" type="button" class="dtc-offset-button" id="dtc-vip-toggle">SET AS VIP</button>
+            <button title="Set or unset the selected steerpoint as VRP" type="button" class="dtc-offset-button" id="dtc-vrp-toggle">SET AS VRP</button>
             <button type="button" class="dtc-offset-button" id="dtc-modesel-toggle" title="Sighting mode selector. Click to cycle SIGHTING:NONE, SIGHTING:VIP, SIGHTING:VRP." hidden>SIGHTING:NONE</button>
           </div>
           <table class="dtc-offset-table">
@@ -253,16 +254,16 @@
                 <td>
                   <div class="dtc-offset-set-cell">
                     <input class="dtc-offset-input dtc-offset-stpt-input" data-offset-stpt-target inputmode="numeric" autocomplete="off">
-                    <button type="button" class="dtc-offset-button dtc-offset-stpt-set">SET</button>
+                    <button title="Set this offset to the entered steerpoint's position" type="button" class="dtc-offset-button dtc-offset-stpt-set">SET</button>
                   </div>
                 </td>
-                <td><button type="button" class="dtc-offset-button dtc-offset-clear">CLR</button></td>
+                <td><button title="Clear this offset" type="button" class="dtc-offset-button dtc-offset-clear">CLR</button></td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
           <div class="dtc-offset-actions">
-            <button type="button" class="dtc-offset-button" id="dtc-save-nav-offsets">SAVE TO .INI</button>
+            <button title="Save this section to the callsign .ini file" type="button" class="dtc-offset-button" id="dtc-save-nav-offsets">SAVE TO .INI</button>
           </div>
         </div>
       </div>
@@ -300,7 +301,7 @@
           </div>
         </div>
       <div class="dtc-icp-status" id="dtc-icp-status"></div>
-      <button type="button" class="dtc-fcc-section-save" id="dtc-save-icp">SAVE TO .INI</button>
+      <button title="Save this section to the callsign .ini file" type="button" class="dtc-fcc-section-save" id="dtc-save-icp">SAVE TO .INI</button>
     </fieldset>
 
     <fieldset class="dtc-fcc-group dtc-laser-panel">
@@ -320,7 +321,7 @@
           </div>
         </div>
       <div class="dtc-icp-status" id="dtc-laser-status"></div>
-      <button type="button" class="dtc-fcc-section-save" id="dtc-save-laser">SAVE TO .INI</button>
+      <button title="Save this section to the callsign .ini file" type="button" class="dtc-fcc-section-save" id="dtc-save-laser">SAVE TO .INI</button>
     </fieldset>
 
     <div class="dtc-fcc-grid">
@@ -342,7 +343,7 @@
           <button type="button" class="dtc-fcc-cycle interface-cycle-button" id="dtc-fcc-aim120-size" data-dtc-field="FCC_AIM:AIM120_TargetSize">UNKN</button>
           <span class="dtc-fcc-unit"></span>
         </div>
-        <button type="button" class="dtc-fcc-section-save" data-fcc-save-section="FCC_AIM">SAVE TO .INI</button>
+        <button title="Save this section to the callsign .ini file" type="button" class="dtc-fcc-section-save" data-fcc-save-section="FCC_AIM">SAVE TO .INI</button>
       </fieldset>
 
       <fieldset class="dtc-fcc-group">
@@ -362,7 +363,7 @@
           <input class="dtc-fcc-input interface-text-input" id="dtc-fcc-mav-wpt" data-dtc-field="FCC_AGM:Maverick_AutoPwrWpt" inputmode="numeric" autocomplete="off">
           <span class="dtc-fcc-unit"></span>
         </div>
-        <button type="button" class="dtc-fcc-section-save" data-fcc-save-section="FCC_AGM">SAVE TO .INI</button>
+        <button title="Save this section to the callsign .ini file" type="button" class="dtc-fcc-section-save" data-fcc-save-section="FCC_AGM">SAVE TO .INI</button>
       </fieldset>
       </div>
 
@@ -435,7 +436,7 @@
       </div>
       {% endfor %}
         </div>
-        <button type="button" class="dtc-fcc-section-save" data-fcc-save-section="FCC_AGB">SAVE TO .INI</button>
+        <button title="Save this section to the callsign .ini file" type="button" class="dtc-fcc-section-save" data-fcc-save-section="FCC_AGB">SAVE TO .INI</button>
       </fieldset>
     </div>
     <div class="dtc-fcc-status" id="dtc-fcc-status"></div>

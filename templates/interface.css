@@ -1,108 +1,183 @@
-.interface-text-input:not([type="checkbox"]) {
-  box-sizing: border-box;
-  border: 2px solid var(--preview-line, #3f3f3f);
-  border-radius: 0;
-  background: var(--preview-panel, #0d0d0d);
-  color: var(--preview-text, #d4d4d4);
-  font-family: "Map Overlay Mono", "IBMPlexMono", "DejaVu Sans Mono", monospace;
-  font-size: 0.88rem;
+/* Shared screen interface. Printed briefing styles remain independent. */
+@font-face {
+  font-family: "Interface Mono";
+  src: url("../assets/fonts/IBM_Plex_Mono/IBMPlexMono-Regular.ttf") format("truetype");
   font-weight: 400;
-  min-height: 2rem;
-  padding: 2px 6px;
-  letter-spacing: 0;
-  outline: none;
+  font-display: swap;
 }
-
-.interface-text-input:not([type="checkbox"])::placeholder {
-  color: rgba(212, 212, 212, 0.56);
-}
-
-.interface-text-input:not([type="checkbox"]):focus {
-  border-color: #ffffff;
-  background: #ffffff;
-  color: #000000;
-  box-shadow: none;
-}
-
-.interface-text-input:not([type="checkbox"])[readonly] {
-  color: rgba(212, 212, 212, 0.82);
-  border-color: var(--preview-line, #3f3f3f);
-}
-
-.interface-select {
-  box-sizing: border-box;
-  min-height: 2rem;
-  padding: 2px 1.9rem 2px 6px;
-  border: 2px solid var(--preview-line, #3f3f3f);
-  border-radius: 0;
-  background-color: var(--preview-panel, #0d0d0d);
-  color: var(--preview-text, #d4d4d4);
-  font-family: "Map Overlay Mono", "IBMPlexMono", "DejaVu Sans Mono", monospace;
-  font-size: 0.88rem;
-  font-weight: 400;
-  letter-spacing: 0;
-  outline: none;
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  background-image:
-    linear-gradient(45deg, transparent 50%, currentColor 50%),
-    linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position:
-    calc(100% - 0.95rem) calc(50% - 0.1rem),
-    calc(100% - 0.62rem) calc(50% - 0.1rem);
-  background-size: 0.33rem 0.33rem, 0.33rem 0.33rem;
-  background-repeat: no-repeat;
-  color-scheme: dark;
-}
-
-.interface-select:focus {
-  border-color: var(--preview-accent, #80bfff);
-  background-color: var(--preview-panel, #0d0d0d);
-  color: var(--preview-text, #d4d4d4);
-  box-shadow: none;
-}
-
-.interface-select option {
-  background: #000000;
-  color: #ffffff;
-}
-
-.interface-cycle-button {
-  box-sizing: border-box;
-  min-height: 2rem;
-  padding: 3px 10px;
-  border: none;
-  border-radius: 0;
-  background: var(--preview-bg, #070707);
-  color: var(--preview-text, #d4d4d4);
-  font-family: "Viper", "Briefing Sans", sans-serif;
-  font-size: 0.95rem;
+@font-face {
+  font-family: "Interface Mono";
+  src: url("../assets/fonts/IBM_Plex_Mono/IBMPlexMono-Bold.ttf") format("truetype");
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-align: center;
-  text-transform: uppercase;
-  cursor: pointer;
-  outline: none;
+  font-display: swap;
 }
-
-.interface-cycle-button:focus {
-  outline: none;
+@font-face {
+  font-family: "Interface Viper";
+  src: url("../assets/fonts/viper-display/ViperDisplay-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
 }
+@media screen {
+  :root {
+    --ui-panel: #0d0d0d;
+    --ui-hover: #202020;
+    --ui-selected: #172d45;
+    --ui-text: #d4d4d4;
+    --ui-muted: #9ca7b2;
+    --ui-border: #c3cbd3;
+    --ui-separator: #3f3f3f;
+    --ui-accent: #80bfff;
+    --ui-shadow: 0 8px 24px #0008;
+    --ui-backdrop: rgb(0 0 0 / 72%);
+    --ui-font: "Interface Mono", "DejaVu Sans Mono", monospace;
+    --ui-heading-font: "Interface Viper", sans-serif;
+    --ui-font-size: 14px;
+    --ui-tooltip-size: 12px;
+    --ui-control-height: 32px;
+    --ui-space: 4px;
+  }
+  .interface-text-input:not([type="checkbox"]),
+  .interface-select {
+    box-sizing: border-box;
+    min-height: var(--ui-control-height);
+    padding: var(--ui-space) calc(2 * var(--ui-space));
+    border: 1px solid var(--ui-separator);
+    border-radius: 0;
+    background-color: var(--ui-panel);
+    color: var(--ui-text);
+    font: 400 var(--ui-font-size)/1.4 var(--ui-font);
+    letter-spacing: normal;
+    text-transform: none;
+    color-scheme: dark;
+    box-shadow: none;
+  }
+  .interface-text-input:not([type="checkbox"])::placeholder { color: var(--ui-muted); }
+  .interface-text-input:not([type="checkbox"])[readonly] { color: var(--ui-muted); }
+  .interface-text-input:not([type="checkbox"]):focus,
+  .interface-select:focus { border-color: var(--ui-accent); outline: 1px solid var(--ui-accent); outline-offset: 1px; box-shadow: none; }
+  .interface-select {
+    padding-right: 28px;
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+  }
+  .interface-select option { color: var(--ui-text); background: var(--ui-panel); font: inherit; }
+  .interface-select:disabled,
+  .interface-button:disabled { opacity: 0.45; cursor: default; }
 
-.interface-cycle-button:focus-visible {
-  outline: 1px solid var(--preview-accent, #80bfff);
-  outline-offset: 2px;
-}
+  .interface-button,
+  .interface-cycle-button {
+    box-sizing: border-box;
+    min-height: var(--ui-control-height);
+    padding: var(--ui-space) calc(3 * var(--ui-space));
+    border: 1px solid var(--ui-border);
+    border-radius: 0;
+    background: var(--ui-panel);
+    color: var(--ui-text);
+    font: 700 14px/1.3 var(--ui-heading-font);
+    letter-spacing: 0.04em;
+    text-align: center;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: none;
+    text-shadow: none;
+  }
+  .interface-cycle-button { border-color: transparent; }
+  .interface-button:hover:not(:disabled),
+  .interface-cycle-button:hover:not(:disabled) { background: var(--ui-hover); color: var(--ui-accent); text-shadow: none; }
+  .interface-button:focus-visible,
+  .interface-cycle-button:focus-visible,
+  .interface-disclosure > summary:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+  .interface-button-primary { border-color: var(--ui-accent); color: var(--ui-accent); }
+  .interface-button:active:not(:disabled),
+  .interface-cycle-button:active,
+  .interface-cycle-button.is-flashing { background: var(--ui-selected); color: var(--ui-text); }
 
-.interface-cycle-button:hover {
-  color: var(--preview-accent, #80bfff);
-  text-shadow: 0 0 8px rgba(58, 167, 255, 0.35);
-}
+  .interface-dialog,
+  .interface-dialog * { box-sizing: border-box; font: inherit; color: inherit; }
+  dialog.interface-dialog {
+    width: min(544px, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
+    max-height: calc(100dvh - 32px);
+    margin: auto;
+    padding: calc(4 * var(--ui-space));
+    overflow: auto;
+    border: 1px solid var(--ui-border);
+    border-radius: 0;
+    background: var(--ui-panel);
+    color: var(--ui-text);
+    box-shadow: var(--ui-shadow);
+    font: 400 var(--ui-font-size)/1.5 var(--ui-font);
+    text-align: left;
+    color-scheme: dark;
+  }
+  dialog.interface-dialog::backdrop { background: var(--ui-backdrop); }
+  .interface-dialog .interface-dialog-title {
+    margin: 0 0 16px;
+    color: var(--ui-accent);
+    font: 700 18px/1.3 var(--ui-heading-font);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .interface-dialog .interface-dialog-head { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+  .interface-dialog p,
+  .interface-dialog ol { margin: 0 0 16px; overflow-wrap: anywhere; }
+  .interface-dialog ol { padding-left: 24px; }
+  .interface-dialog li { margin-bottom: 8px; }
+  .interface-dialog .interface-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .interface-dialog .interface-button { font: 700 14px/1.3 var(--ui-heading-font); }
+  .interface-dialog .interface-button-primary { color: var(--ui-accent); }
+  .interface-dialog .progress-meta { display: flex; justify-content: space-between; gap: 16px; margin-top: 8px; color: var(--ui-muted); font-size: 12px; }
+  .interface-dialog .progress-note { margin: 16px 0 0; padding-top: 12px; border-top: 1px solid var(--ui-separator); color: var(--ui-muted); }
+  .interface-dialog progress { display: block; width: 100%; height: 16px; accent-color: var(--ui-accent); }
+  .interface-dialog progress::-webkit-progress-bar { background: var(--ui-hover); border: 1px solid var(--ui-separator); }
+  .interface-dialog progress::-webkit-progress-value { background: var(--ui-accent); }
+  .interface-dialog progress::-moz-progress-bar { background: var(--ui-accent); }
 
-.interface-cycle-button:active,
-.interface-cycle-button.is-flashing {
-  background: #ffffff;
-  color: #000000;
-  text-shadow: none;
+  .interface-tooltip,
+  .leaflet-tooltip.map-ruler-tooltip,
+  .leaflet-tooltip.dtc-drag-offset-tooltip {
+    box-sizing: border-box;
+    padding: 8px;
+    border: 1px solid var(--ui-border);
+    border-radius: 0;
+    background: var(--ui-panel);
+    color: var(--ui-text);
+    box-shadow: var(--ui-shadow);
+    font: 400 var(--ui-tooltip-size)/1.4 var(--ui-font);
+    text-align: left;
+    text-shadow: none;
+  }
+  .interface-tooltip *,
+  .leaflet-tooltip.map-ruler-tooltip *,
+  .leaflet-tooltip.dtc-drag-offset-tooltip * { font: inherit; color: inherit; }
+  .interface-tooltip {
+    color-scheme: dark;
+    position: fixed;
+    inset: auto;
+    margin: 0;
+    max-width: min(360px, calc(100vw - 16px));
+    max-height: calc(100dvh - 16px);
+    overflow: auto;
+    overflow-wrap: anywhere;
+    white-space: pre-line;
+    z-index: 11000;
+  }
+  .target-stpt-popup .leaflet-popup-content-wrapper,
+  .target-stpt-popup .leaflet-popup-tip { background: var(--ui-panel); border: 1px solid var(--ui-border); border-radius: 0; box-shadow: var(--ui-shadow); }
+  .target-stpt-popup .leaflet-popup-content-wrapper { padding: 4px; }
+  .target-stpt-popup .leaflet-popup-content { margin: 8px 24px 8px 8px; color: var(--ui-text); font: 400 13px/1.5 var(--ui-font); }
+  .target-stpt-popup .leaflet-popup-content * { color: inherit; font: inherit; }
+  .target-stpt-popup .leaflet-popup-content b { color: var(--ui-accent); font-weight: 700; }
+  .target-stpt-popup .interface-map-title { display: block; margin-bottom: 4px; }
+  .target-stpt-popup .interface-map-row { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px; }
+  .leaflet-container .target-stpt-popup a.leaflet-popup-close-button { color: var(--ui-text); font: 18px/24px var(--ui-font); }
+  .leaflet-container .target-stpt-popup a.leaflet-popup-close-button:focus-visible { outline: 2px solid var(--ui-accent); }
+  .interface-disclosure > summary { padding: 8px; color: var(--ui-text); font: 700 14px/1.4 var(--ui-heading-font); cursor: pointer; }
+  .interface-disclosure > summary:hover { background: var(--ui-hover); }
+  .interface-disclosure[open] > summary { color: var(--ui-accent); border-bottom: 1px solid var(--ui-separator); }
+  .dtc-popup-output-help.interface-button { width: 32px; padding: 4px; }
+  .dtc-popup-output-support.is-open { padding-top: 12px; border-top: 1px solid var(--ui-separator); }
 }

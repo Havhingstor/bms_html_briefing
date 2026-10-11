@@ -425,7 +425,7 @@ class ChartService:
                     if target_count
                     else "No chart artifacts need generation."
                 ),
-                note="Only done once per chart. Only runs again when the source data or chart generator updates.",
+                note="Only need to run once per chart. Only need to run again when the source data or chart generator updates.",
                 current=0 if target_count else None,
                 total=target_count or None,
                 can_cancel=False,

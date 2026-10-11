@@ -108,6 +108,7 @@
 
         function menuItem(parent, label, callback, disabled = false) {
             const el = button(label, label, callback, disabled);
+            el.removeAttribute("title");
             el.className = "layout-editor-item";
             el.setAttribute("role", "menuitem");
             el.tabIndex = -1;

@@ -127,17 +127,6 @@
 		    cursor: default;
 		    box-shadow: none;
 		}
-		.target-stpt-popup .leaflet-popup-content-wrapper {
-		    padding: 2px 4px;
-		    border-radius: 4px;
-		}
-		.target-stpt-popup .leaflet-popup-content {
-		    margin: 2px 4px;
-		    color: #000000;
-		    font-family: "Map Overlay Mono", "DejaVu Sans Mono", monospace;
-		    font-size: 11px;
-		    line-height: 1.2;
-		}
 		.target-stpt-popup .leaflet-popup-tip {
 		    width: 10px;
 		    height: 10px;
@@ -168,14 +157,7 @@
 		}
 		.map-source-select {
 		    width: 100%;
-		    height: 1.7em;
 		    margin: 0;
-		    border: 1px solid #111111;
-		    background: #f2f2f2;
-		    color: #111111;
-		    font-family: "Briefing Sans", "DejaVu Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-		    font-size: 0.9rem;
-		    font-weight: 700;
 		}
 		.leaflet-control-map-ruler a {
 		    position: relative;
@@ -218,16 +200,7 @@
 		    display: none;
 		}
 		.map-ruler-tooltip {
-		    padding: 2px 4px;
-		    border: 1px solid #000000;
-		    background: rgba(255, 255, 255, 0.92);
-		    color: #000000;
-		    font-family: "Map Overlay Mono", "DejaVu Sans Mono", monospace;
-		    font-size: 11px;
-		    font-weight: 700;
-		    line-height: 1.15;
 		    white-space: nowrap;
-		    box-shadow: none;
 		    z-index: 1000;
 		}
 		.map-ruler-tooltip::before {
@@ -238,11 +211,6 @@
 		}
 		.map-flight-path-controls {
 		    width: 100%;
-		}
-		.map-flight-path-controls summary {
-		    cursor: pointer;
-		    font-weight: 700;
-		    text-align: left;
 		}
 		.map-flight-path-table {
 		    width: 100%;
@@ -295,7 +263,7 @@
   </colgroup>
       <tr>
 	<th class="header" height="1.7em">
-	  <select id="mapSourceSelect" class="map-source-select" title="Map source">
+	  <select id="mapSourceSelect" class="map-source-select interface-select" title="Map source">
 	    {% for source in map_source_options|default([{"id": "local", "label": "BMS local"}]) %}
 	    <option value="{{ source.id }}"{% if map_id|default("local") == source.id %} selected{% endif %}>{{ source.label }}</option>
 	    {% endfor %}
@@ -318,7 +286,7 @@
 	    {% if has_player_flight_path or map_flight_overlays|default([]) or map_tanker_overlay|default(none) %}
 	    <tr class="map-flight-path-controls-row">
 	      <td colspan="2">
-	        <details id="mapFlightPathControls" class="map-flight-path-controls">
+	        <details id="mapFlightPathControls" class="map-flight-path-controls interface-disclosure">
 	          <summary>Flight paths</summary>
 	          <table class="map-flight-path-table">
 	            <tbody>

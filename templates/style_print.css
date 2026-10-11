@@ -119,3 +119,8 @@ tbody tr:nth-child(even) td {
         cursor: default;
     }
 }
+/* Screen overlays must never become briefing content when printing the preview. */
+.interface-dialog,
+.interface-tooltip {
+    display: none !important;
+}

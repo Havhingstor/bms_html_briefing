@@ -10,23 +10,10 @@
       gap: 0.35em;
   }
   .cam-package-picker input {
-      font: inherit;
       width: 8.5em;
-      color: #111111;
-      background: #ffffff;
-      border: 1px solid #666666;
-      padding: 0.05em 0.3em;
   }
   .cam-package-picker select {
-      font: inherit;
       max-width: 14em;
-      color: #111111;
-      background: #ffffff;
-      border: 1px solid #666666;
-      padding: 0.05em 0.3em;
-  }
-  .cam-package-picker label {
-      color: #111111;
   }
   @media print {
       .cam-package-picker {
@@ -38,9 +25,8 @@
       <tr>
 <th class="header clickable" onclick="toggleVisHeader(this)" id="suppPackage_header"><span class="arrow">▼</span>Supporting package
   <span class="cam-package-picker" onclick="event.stopPropagation();" onmousedown="event.stopPropagation();">
-    <label for="cam-support-package-select">CAM</label>
-    <input id="cam-support-package-query" type="search" placeholder="# / role" title="Type to filter package list">
-    <select id="cam-support-package-select" title="CAM supporting package" {% if not package_options %}disabled{% endif %}>
+    <input id="cam-support-package-query" class="interface-text-input" type="search" placeholder="# / role" title="Type to filter package list">
+    <select id="cam-support-package-select" class="interface-select" aria-label="Supporting package" title="Select a package from the loaded save." {% if not package_options %}disabled{% endif %}>
       {% if package_options %}
       <option value="">No supporting package</option>
       {% for option in package_options %}

@@ -801,11 +801,6 @@ td {
 .dtc-map-panel table td {
   border: 2px solid var(--preview-line);
 }
-.dtc-map-panel .map-source-select {
-  border-color: var(--preview-line);
-  background: var(--preview-panel);
-  color: var(--preview-text);
-}
 .dtc-selected-point {
   filter: drop-shadow(0 0 6px #66baff);
 }
@@ -868,16 +863,7 @@ td {
   cursor: pointer;
 }
 .dtc-drag-offset-tooltip {
-  padding: 2px 4px;
-  border: 1px solid #000000;
-  background: rgba(232, 243, 255, 0.92);
-  color: #000000;
-  font-family: "Map Overlay Mono", "DejaVu Sans Mono", monospace;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.15;
   white-space: nowrap;
-  box-shadow: none;
 }
 .dtc-drag-offset-tooltip::before {
   display: none;

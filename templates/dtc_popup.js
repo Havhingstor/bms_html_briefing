@@ -608,12 +608,12 @@ function formatPopupOutput(plan, supportOpen = false) {
   return "<div class=\"dtc-popup-output-title\">" + escapeHtml(title) + "</div>"
     + primaryLines.join("")
     + "<div class=\"dtc-popup-output-actions\">"
-    + "<button type=\"button\" class=\"dtc-popup-output-copy\" data-popup-copy-output title=\"Copy compact plain-text output\">COPY</button>"
+    + "<button type=\"button\" class=\"dtc-popup-output-copy interface-button\" data-popup-copy-output title=\"Copy compact plain-text output\">COPY</button>"
     + "</div>"
-    + "<div class=\"dtc-popup-output-support" + (supportOpen ? " is-open" : "") + "\">"
+    + "<div id=\"dtc-popup-support-values\" class=\"dtc-popup-output-support" + (supportOpen ? " is-open" : "") + "\">"
     + supportLines.join("")
     + "</div>"
-    + "<button type=\"button\" class=\"dtc-popup-output-help" + (supportOpen ? " is-open" : "") + "\" data-popup-toggle-support title=\"Show support values\">?</button>";
+    + "<button type=\"button\" class=\"dtc-popup-output-help interface-button" + (supportOpen ? " is-open" : "") + "\" aria-expanded=\"" + supportOpen + "\" aria-controls=\"dtc-popup-support-values\" aria-label=\"Show support values\" data-popup-toggle-support title=\"Show support values\">?</button>";
 }
 
 function formatPopupOutputText(plan) {
@@ -691,9 +691,15 @@ function addDtcPopupConnector(coords, options) {
 }
 
 function formatPopupPointContent(title, lines) {
-  const content = ["<b>" + escapeHtml(title) + "</b>"];
-  lines.filter(Boolean).forEach((line) => content.push(escapeHtml(line)));
-  return content.join("<br>");
+  const content = ["<b class=\"interface-map-title\">" + escapeHtml(title) + "</b>"];
+  lines.filter(Boolean).forEach((line) => {
+    const separator = line.indexOf(":");
+    content.push(separator < 0
+      ? "<div>" + escapeHtml(line) + "</div>"
+      : "<div class=\"interface-map-row\"><span>" + escapeHtml(line.slice(0, separator + 1))
+        + "</span><span>" + escapeHtml(line.slice(separator + 1).trim()) + "</span></div>");
+  });
+  return content.join("");
 }
 
 function formatPopupAglMslLine(label, aglFeet, terrainFeet) {
