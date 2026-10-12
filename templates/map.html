@@ -932,9 +932,9 @@ let tstptIniCoords = [{% for point in tstpt_coords %}
 		       {% endfor %}]
 tstptMapCoords = [];
 
-let tgtStptIniCoords = [{% for point in tgtsteerpoints %} {% if not point.also_in_flightplan %}
+let tgtStptIniCoords = [{% for point in tgtsteerpoints %}
               [ [{{point.coord_x}}, {{point.coord_y}}], {{point.number}}, {{point.name|tojson}} ],
-               {% endif %}  {% endfor %}]
+               {% endfor %}]
 tgtStptMapCoords = [];
 
 let weaponTargetIniCoords = [{% for point in wpntgts %}
@@ -1002,11 +1002,14 @@ function getFlightPointEntries() {
     const alternateIndex = getAlternateIndex();
     const routeEndExclusiveIndex = getRouteEndExclusiveIndex();
     const routeEndIndex = getRouteEndIndex();
+    const targets = getTargetSteerpointEntries();
     return stptMapCoords
         .map((latlng, index) => ({ latlng, index }))
         .filter((entry) => {
             if (!validLatLng(entry.latlng) || entry.index <= 0 || entry.index >= routeEndExclusiveIndex) return false;
             if (alternateIndex < 0 && entry.index === routeEndIndex) return false;
+            const number = entry.index + 1;
+            if (targets.find(sp => sp.number == number) != undefined) return false;
             return true;
         });
 }
