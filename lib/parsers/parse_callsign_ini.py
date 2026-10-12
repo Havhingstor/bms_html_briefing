@@ -412,6 +412,8 @@ class Callsign_ini:
         self.fcc_settings = self.fill_fcc_settings(file_contents)
         self.laser_settings = self.fill_laser_settings(file_contents)
 
+        self.convert_steerpoints(file_contents)
+
 
     class Steerpoint:
         def __init__(self, line_contents = None):
@@ -703,6 +705,41 @@ class Callsign_ini:
             except Exception as e:
                 logger.warning(f"Error reading threat steerpoints: {e}")
                 return []
+
+    def convert_steerpoints(self, file_contents = None):
+        """
+        Converts all precision steerpoints after the first landing to target steerpoints.
+        They're not displayed in the flight plan map anyways, so they should be viewed as target steerpoints.
+        OAPs etc. can still be attached
+        """
+
+        if file_contents == None:
+            return
+
+        first_landing = next(getattr(s, "number") for s in self.steerpoints if getattr(s, "action") == "7")
+
+        if first_landing == None or first_landing >= len(self.steerpoints):
+            return
+
+        after_landing = self.steerpoints[first_landing:] # The number of the first landing is also the index of it successor
+
+        affected_steerpoints = [s for s in after_landing if getattr(s, "action") == "-1"]
+        affected_steerpoint_indices = [getattr(s, "number") - 1 for s in affected_steerpoints]
+
+        for sp in affected_steerpoints:
+            try:
+                self.steerpoints.remove(sp)
+            except:
+                pass
+
+        try:
+            lines = [l for l in file_contents if _target_index(l) in affected_steerpoint_indices and _line_last_value(l) != "Not set"]
+            self.tgtsteerpoints.extend(self.TgtSteerpoint(x) for x in lines)
+            self.tgtsteerpoints.sort(key=lambda stp: getattr(stp, "number"))
+        except Exception as e:
+            logger.warning(f"Error reading target steerpoints: {e}")
+            return
+
 
     def fill_cmds(self, file_contents = None):
         if file_contents == None:
