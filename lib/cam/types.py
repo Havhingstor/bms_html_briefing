@@ -194,6 +194,7 @@ class SummaryAircraftMember(TypedDict):
     takeoff_fuel_lb: float | None
     gross_weight_lb: float | None
     drag_index: int | None
+    liftoff_speed_kcas: float | None
 
 
 class SummaryFlight(TypedDict):

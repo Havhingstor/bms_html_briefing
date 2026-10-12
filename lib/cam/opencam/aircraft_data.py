@@ -288,6 +288,7 @@ class AircraftSimulationData:
     hardpoint_groups: tuple[str, ...]
     external_hardpoints: tuple[float, ...]
     stores_drag: AircraftStoresDrag | None
+    takeoff_pitch_deg: float | None = None
 
     def to_view(self) -> dict[str, object]:
         return {
@@ -305,6 +306,7 @@ class AircraftSimulationData:
             "hardpoint_groups": list(self.hardpoint_groups),
             "external_hardpoints": list(self.external_hardpoints),
             "stores_drag": None if self.stores_drag is None else self.stores_drag.to_view(),
+            "takeoff_pitch_deg": self.takeoff_pitch_deg,
         }
 
 
@@ -410,6 +412,7 @@ def parse_aircraft_simulation_data(text: str, source_path: str | Path) -> Aircra
             hardpoint_groups=tuple(groups),
             external_hardpoints=hardpoints.message("is_external_hardpoint").numbers("values"),
             stores_drag=stores_drag,
+            takeoff_pitch_deg=aux.message("ai_behavior").scalar("opt_takeoff_pitch", float),
         )
     except (AircraftDataError, ValueError, SyntaxError, OverflowError) as exc:
         raise AircraftDataError(f"{source_path}: {exc}") from exc

@@ -4,6 +4,8 @@ from __future__ import annotations
 import logging
 import math
 
+from lib.liftoff import LiftoffPerformance
+
 from .opencam.loadout_weights import resolve_loadout_hardware
 from .opencam.uni_wrappers import FlightUnit
 from .types import SummaryAircraftMember, SummaryStore
@@ -116,13 +118,19 @@ def build_aircraft_members(flight: FlightUnit) -> list[SummaryAircraftMember]:
         logger.debug("Admin aircraft data unavailable: %s", exc)
         aircraft = None
     decoded = [_loadout_data(flight, loadout, aircraft) for loadout in loadouts]
+    liftoff = None
+    if aircraft is not None:
+        try:
+            liftoff = LiftoffPerformance.from_simulation(aircraft.simulation_data)
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.debug("Admin liftoff performance unavailable: %s", exc)
     members: list[SummaryAircraftMember] = []
     for index in range(count):
         stores, external_fuel, dry_weight, drag_index = decoded[0 if len(decoded) == 1 else index]
         member: SummaryAircraftMember = {
             "index": index, "stores": stores, "loaded_cft": None,
             "takeoff_fuel_lb": None, "gross_weight_lb": None,
-            "drag_index": None,
+            "drag_index": None, "liftoff_speed_kcas": None,
         }
         members.append(member)
         if aircraft is None:
@@ -160,4 +168,9 @@ def build_aircraft_members(flight: FlightUnit) -> list[SummaryAircraftMember]:
             member["gross_weight_lb"] = clean + _weight(dry_weight) + cft_dry + fuel
         except (ValueError, TypeError) as exc:
             logger.debug("Admin gross weight unavailable: %s", exc)
+        if liftoff is not None and member["gross_weight_lb"] is not None:
+            try:
+                member["liftoff_speed_kcas"] = liftoff.speed_kcas(member["gross_weight_lb"])
+            except (ValueError, TypeError) as exc:
+                logger.debug("Admin liftoff speed unavailable: %s", exc)
     return members

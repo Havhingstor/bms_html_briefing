@@ -49,11 +49,14 @@ def build_admin_data(*, summary: Any, briefing: Any, player_name: str,
                   for key, category in categories.items()}
         if member.get("loaded_cft"):
             groups["tanks"].append("CFT")
+        liftoff = member.get("liftoff_speed_kcas")
+        liftoff_text = _whole_number(liftoff)
         return {
             **groups,
             "gross_weight": _whole_number(member.get("gross_weight_lb")),
             "takeoff_fuel": _whole_number(member.get("takeoff_fuel_lb")),
             "drag_index": _whole_number(member.get("drag_index")),
+            "liftoff_speed": liftoff_text if liftoff_text is not None and 70 <= liftoff <= 330 else None,
         }
     except (ValueError, TypeError, KeyError):
         return {}

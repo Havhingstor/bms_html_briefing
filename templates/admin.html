@@ -53,7 +53,8 @@
       <tr>
         <th class="header nowrap" scope="row">Tanks</th>
         <td id="admin_tanks">{{ stores('tanks') }}</td>
-        <td colspan="2" aria-hidden="true"></td>
+        <th class="header nowrap" scope="row" title="Liftoff speed (KCAS).">L/O SPD</th>
+        <td id="admin_liftoff_speed" class="nowrap" title="Liftoff speed (KCAS).">{{ loadout.get('liftoff_speed') or '—' }}</td>
         <th class="header nowrap" scope="row">UHF (Tac.)</th>
         <td contenteditable="true" class="editable" id="admin_4"></td>
         <th class="header" scope="row">JAM BANDS</th>
