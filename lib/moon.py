@@ -3,7 +3,7 @@ from math import sin, asin, cos, tan, atan2, radians, degrees
 ## date is in YYYY MM DD
 date0 = dt.date(2000, 1, 6)
 
-## Based on J. Meeus, "Astronomical observations", Chapters 45, 47
+## Based on J. Meeus, "Astronomical Algorithms", Chapters 45, 47
 
 #  ----------------------------
 # Helper functions
