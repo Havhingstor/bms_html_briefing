@@ -932,9 +932,9 @@ let tstptIniCoords = [{% for point in tstpt_coords %}
 		       {% endfor %}]
 tstptMapCoords = [];
 
-let tgtStptIniCoords = [{% for point in tgtsteerpoints %}
+let tgtStptIniCoords = [{% for point in tgtsteerpoints %} {% if not point.also_in_flightplan %}
               [ [{{point.coord_x}}, {{point.coord_y}}], {{point.number}}, {{point.name|tojson}} ],
-               {% endfor %}]
+               {% endif %}  {% endfor %}]
 tgtStptMapCoords = [];
 
 let weaponTargetIniCoords = [{% for point in wpntgts %}

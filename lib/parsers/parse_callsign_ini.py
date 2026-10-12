@@ -483,7 +483,7 @@ class Callsign_ini:
                 return []
 
     class TgtSteerpoint:
-        def __init__(self, line_contents = None):
+        def __init__(self, line_contents = None, also_in_flightplan = False):
             for attr in ["number", "name", "coord_x", "coord_y", "coord_z"]:
                 init_func = getattr(self, f'init_{attr}', None)
                 if callable(init_func):
@@ -495,6 +495,8 @@ class Callsign_ini:
                         setattr(self, attr, "")
                 else:
                     logger.warning(f"No function to find {type(self).__name__}.{attr}")
+
+            setattr(self, "also_in_flightplan", also_in_flightplan)
 
         def init_number(self, line_contents):
             if line_contents == None:
@@ -716,25 +718,26 @@ class Callsign_ini:
         if file_contents == None:
             return
 
+        precision_steerpoints = [s for s in self.steerpoints if getattr(s, "action") == "-1"]
+        precision_steerpoints_indices: list[int] = [getattr(s, "number") - 1 for s in precision_steerpoints]
+
         first_landing = next(getattr(s, "number") for s in self.steerpoints if getattr(s, "action") == "7")
+        after_landing_index = first_landing # The number of the first landing is also the index of its successor
 
-        if first_landing == None or first_landing >= len(self.steerpoints):
-            return
-
-        after_landing = self.steerpoints[first_landing:] # The number of the first landing is also the index of it successor
-
-        affected_steerpoints = [s for s in after_landing if getattr(s, "action") == "-1"]
-        affected_steerpoint_indices = [getattr(s, "number") - 1 for s in affected_steerpoints]
-
-        for sp in affected_steerpoints:
-            try:
-                self.steerpoints.remove(sp)
-            except:
-                pass
+        for s in precision_steerpoints:
+            if getattr(s, "number") > first_landing:
+                try:
+                    self.steerpoints.remove(s)
+                except:
+                    pass
 
         try:
-            lines = [l for l in file_contents if _target_index(l) in affected_steerpoint_indices and _line_last_value(l) != "Not set"]
-            self.tgtsteerpoints.extend(self.TgtSteerpoint(x) for x in lines)
+            for line in file_contents:
+                index = _target_index(line)
+                if index in precision_steerpoints_indices and _line_last_value(line) != "Not set":
+                    is_in_fp = index < after_landing_index if isinstance(after_landing_index, int) else True
+                    self.tgtsteerpoints.append(self.TgtSteerpoint(line, is_in_fp))
+
             self.tgtsteerpoints.sort(key=lambda stp: getattr(stp, "number"))
         except Exception as e:
             logger.warning(f"Error reading target steerpoints: {e}")
