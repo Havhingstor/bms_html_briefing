@@ -1,12 +1,14 @@
-"""Attach minimum-return-fuel cells using DTC coordinates and a CAM fuel profile."""
+"""Attach MFOB cells using the planned route and the player's takeoff loadout."""
 from __future__ import annotations
 
 import math
 import os
+import re
 from pathlib import Path
 from typing import Any
 
-from lib.fuel import ASSUMPTIONS, FEET_PER_NM, FuelModelError, minimum_fuel_lb
+from lib.fuel import ASSUMPTIONS, FuelModelError
+from lib.route_fuel import RoutePerformance, RoutePoint, remaining_route_fuel
 
 _LAND_ACTIONS = {7, 27}
 
@@ -61,7 +63,106 @@ def _matched_flight(summary: dict, briefing: Any) -> dict:
     return flight
 
 
-def build_fuel_plan(*, summary: Any, briefing: Any, dtc: Any, bms_base_dir: str, theater: str) -> dict:
+def _matched_member(flight: dict, briefing: Any, player_name: str) -> dict:
+    def normalized(value):
+        return " ".join(str(value or "").split()).casefold()
+
+    roster = _attr(_attr(briefing, "own_flight"), "roster")
+    matches = []
+    for index, field in enumerate(("lead", "wing", "element", "four")):
+        rank_and_name = str(_attr(roster, field, "") or "").split(maxsplit=1)
+        if len(rank_and_name) == 2 and normalized(rank_and_name[1]) == normalized(player_name):
+            matches.append(index)
+    if not player_name or len(matches) != 1:
+        raise ValueError("Pilot / roster match")
+    members = [m for m in flight.get("aircraft_members", []) if m["index"] == matches[0]]
+    if len(members) != 1:
+        raise ValueError("Saved aircraft member")
+    return members[0]
+
+
+def _planned_number(value: Any, label: str) -> float:
+    if isinstance(value, bool):
+        raise ValueError(label)
+    try:
+        number = float(str(value).strip().replace(",", ""))
+    except (TypeError, ValueError):
+        raise ValueError(label) from None
+    if not math.isfinite(number):
+        raise ValueError(label)
+    return number
+
+
+def _altitude(row: Any, point: Any, airport: bool) -> float:
+    if airport:
+        # DTC world Z is negative feet MSL, including airfield elevation.
+        return -_planned_number(_attr(point, "coord_z"), "Airfield elevation")
+    text = str(_attr(row, "altitude", "")).strip().upper()
+    if text.endswith("A"):
+        raise ValueError("MSL altitude required")
+    return _planned_number(text[:-1] if text.endswith("M") else text,
+                           "Planned altitude") * (1000 if text.endswith("M") else 1)
+
+
+def _hold_hours(row: Any) -> float:
+    comment = str(_attr(row, "comment", ""))
+    # Timed patrol/attack repetition can also carry a Departure annotation.
+    # Approximate that dwell at this point's planned speed and altitude.
+    if not re.search(r"\b(?:hold|departure)\b", comment, re.IGNORECASE):
+        return 0.
+    departure = re.search(r"Departure:\s*(\d{2}:\d{2}:\d{2})z?", comment, re.IGNORECASE)
+    arrival = re.fullmatch(r"(\d{2}:\d{2}:\d{2})z?", str(_attr(row, "time", "")).strip(), re.IGNORECASE)
+    if not departure or not arrival:
+        raise ValueError("Hold timing")
+
+    def seconds(text):
+        h, m, s = map(int, text.split(":"))
+        if h > 23 or m > 59 or s > 59:
+            raise ValueError("Hold timing")
+        return h * 3600 + m * 60 + s
+
+    return ((seconds(departure[1]) - seconds(arrival[1])) % 86400) / 3600
+
+
+def _route_points(rows: list, dtc: Any) -> tuple[list[RoutePoint], int]:
+    displayed = {}
+    for row in rows:
+        number = _integer(_attr(row, "number"))
+        if number is None or number < 1 or number in displayed:
+            raise ValueError("Briefing steerpoint numbers are invalid or duplicated.")
+        displayed[number] = row
+    points = {}
+    for point in _attr(dtc, "steerpoints", []) or []:
+        number = _integer(_attr(point, "number"))
+        if number is None or number < 1 or number in points:
+            raise ValueError("DTC steerpoint numbers are invalid or duplicated.")
+        points[number] = point
+    landings = sorted(n for n, p in points.items() if _integer(_attr(p, "action")) in _LAND_ACTIONS)
+    if not landings:
+        raise ValueError("The DTC has no planned landing steerpoint.")
+    landing = landings[0]
+    if landing < 2:
+        raise ValueError("Planned route")
+    route = []
+    for number in range(1, landing + 1):
+        point, row = points.get(number), displayed.get(number)
+        if point is None or (row is None and number != landing):
+            raise ValueError("The briefing and DTC steerpoint numbers differ.")
+        airport = number in (1, landing)
+        speed_row = displayed.get(2) if number == 1 else row
+        if number == landing and row is None:
+            speed_row = displayed.get(number - 1)
+        cas = _planned_number(_attr(speed_row, "cas"), "Planned CAS")
+        if cas <= 0:
+            raise ValueError("Planned CAS")
+        north, east = _coordinates(point)
+        route.append(RoutePoint(number, north, east, _altitude(row, point, airport), cas,
+                                0. if airport else _hold_hours(row)))
+    return route, landing
+
+
+def build_fuel_plan(*, summary: Any, briefing: Any, dtc: Any, bms_base_dir: str,
+                    theater: str, player_name: str = "") -> dict:
     """Return non-editable values and tooltips keyed by displayed STPT number."""
     rows = list(_attr(briefing, "steerpoints", []) or [])
     cells = {str(_attr(row, "number")): {"value": None, "tooltip": ASSUMPTIONS} for row in rows}
@@ -69,7 +170,7 @@ def build_fuel_plan(*, summary: Any, briefing: Any, dtc: Any, bms_base_dir: str,
 
     def unavailable(reason: str) -> dict:
         for cell in cells.values():
-            cell["tooltip"] = "Minimum fuel unavailable: " + reason + " " + ASSUMPTIONS
+            cell["tooltip"] = "MFOB unavailable: " + reason + " · " + ASSUMPTIONS
         return result
 
     if not isinstance(summary, dict):
@@ -80,52 +181,23 @@ def build_fuel_plan(*, summary: Any, briefing: Any, dtc: Any, bms_base_dir: str,
     try:
         flight = _matched_flight(summary, briefing)
         profile = flight.get("fuel_profile") or {}
-        rate = profile.get("rate_lb_nm")
-        if rate is None:
-            return unavailable(profile.get("unavailable_reason") or "Aircraft performance data is missing.")
-
-        points = {}
-        for point in _attr(dtc, "steerpoints", []) or []:
-            number = _integer(_attr(point, "number"))
-            if number is None or number < 1 or number in points:
-                raise ValueError("DTC steerpoint numbers are invalid or duplicated.")
-            points[number] = point
-        landings = sorted(n for n, p in points.items() if _integer(_attr(p, "action")) in _LAND_ACTIONS)
-        if not landings:
-            raise ValueError("The DTC has no planned landing steerpoint.")
-        if len(landings) > 2:
-            raise ValueError("The DTC does not uniquely identify home and alternate.")
-        landing_number = landings[0]
-        return_coords = [_coordinates(points[number]) for number in landings]
-
-        # The user selects the matching mission files. Route coordinates and
-        # return destinations come solely from DTC; CAM supplies aircraft data.
-        seen = set()
+        if not profile.get("route_performance"):
+            return unavailable("Reload CAM")
+        model = RoutePerformance.from_view(profile["route_performance"])
+        member = _matched_member(flight, briefing, player_name)
+        # Installed weapons/tanks and CFT dry mass stay attached for every leg.
+        gross = _planned_number(member.get("gross_weight_lb"), "T/O gross weight")
+        takeoff_fuel = _planned_number(member.get("takeoff_fuel_lb"), "T/O fuel")
+        if takeoff_fuel < 0:
+            raise ValueError("T/O fuel")
+        route, landing_number = _route_points(rows, dtc)
+        values = remaining_route_fuel(model, route, gross - takeoff_fuel, member.get("drag_index"))
         for row in rows:
             number = _integer(_attr(row, "number"))
-            if number is None or number in seen:
-                raise ValueError("Briefing steerpoint numbers are invalid or duplicated.")
-            seen.add(number)
             if number > landing_number:
                 cells[str(_attr(row, "number"))]["tooltip"] = "Outside the planned route through landing. " + ASSUMPTIONS
                 continue
-            point = points.get(number)
-            if point is None:
-                raise ValueError("The briefing and DTC steerpoint numbers differ.")
-            coords = _coordinates(point)
-            if (_integer(_attr(point, "action")) in {1, *_LAND_ACTIONS}
-                    or str(_attr(row, "description", "")).casefold() in {"takeoff", "land"}):
-                # Airport rows have no return-fuel figure, even with valid inputs.
-                continue
-            distance = min(math.dist(coords, destination) for destination in return_coords) / FEET_PER_NM
-            fuel = minimum_fuel_lb(distance, rate)
-            cell = cells[str(_attr(row, "number"))]
-            capacity = profile.get("internal_fuel_lb")
-            if capacity is not None and fuel > capacity:
-                cell["tooltip"] = "Direct return exceeds internal fuel capacity at this profile. " + ASSUMPTIONS
-                continue
-            cell["value"] = fuel
-            cell["tooltip"] = ASSUMPTIONS
+            cells[str(_attr(row, "number"))]["value"] = values[number]
         return result
     except (ValueError, TypeError, KeyError, FuelModelError) as exc:
         # Never leave partly computed values when required inputs are invalid.

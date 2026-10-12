@@ -24,7 +24,7 @@ _PRESSURE_PA = 101325 * (_TEMPERATURE_K / 288.15) ** (9.80665 / (287.05287 * 0.0
 RETURN_TAS_KT = RETURN_MACH * math.sqrt(1.4 * 287.05287 * _TEMPERATURE_K) / (1852 / 3600)
 _Q_LBF_SQFT = 0.7 * _PRESSURE_PA * RETURN_MACH ** 2 * 0.09290304 / 4.4482216152605
 
-ASSUMPTIONS = "Min. return fuel @ 30k, 0.8M + 500lb"
+ASSUMPTIONS = "Required fuel along the remaining route + 500 LB (assuming T/O drag factor)"
 
 
 class FuelModelError(ValueError):
@@ -50,7 +50,7 @@ def _axis(values: tuple[float, ...] | None, label: str) -> tuple[float, ...]:
 
 def _bracket(axis: tuple[float, ...], value: float) -> tuple[int, float]:
     if not axis[0] <= value <= axis[-1]:
-        raise FuelModelError("Return profile is outside the aircraft tables.")
+        raise FuelModelError("Aircraft table range")
     index = min(max(bisect_right(axis, value) - 1, 0), len(axis) - 2)
     return index, (value - axis[index]) / (axis[index + 1] - axis[index])
 

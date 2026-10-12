@@ -270,6 +270,7 @@ def generate_html_file(
         fuel_plan = build_fuel_plan(
             summary=brief_summary, briefing=brf, dtc=ci,
             bms_base_dir=bms_conf.base_dir, theater=bms_conf.theater,
+            player_name=getattr(bms_conf, "pilot_name", ""),
         )
         admin_data = build_admin_data(
             summary=brief_summary, briefing=brf, player_name=getattr(bms_conf, "pilot_name", ""),

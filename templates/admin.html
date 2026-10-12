@@ -43,7 +43,8 @@
       <tr>
         <th class="header" scope="row">Misc.</th>
         <td id="admin_misc">{{ stores('misc') }}</td>
-        <td colspan="2" aria-hidden="true"></td>
+        <th class="header" scope="row">DRAG</th>
+        <td id="admin_drag_index" class="nowrap">{{ loadout.get('drag_index') or '—' }}</td>
         <th class="header" scope="row">VHF <button title="Restore default VHF channels" class="refreshButton" style="font-size:inherit;width:1.4em;padding:0;line-height:1;vertical-align:middle" onclick='restoreDefaultAtId("vhf")'>⟳</button></th>
         <td contenteditable="true" class="editable vhf" id="admin_3">{% for i in range(package_size) if package[i].roster.own %}{{i+15}}{% endfor %}</td>
         <th class="header" scope="row">XMIT</th>

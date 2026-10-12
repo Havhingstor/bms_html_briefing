@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from lib.fuel_brief import _attr, _matched_flight, _path
+from lib.fuel_brief import _matched_flight, _matched_member, _path
 
 
 def _pilot_name(value: Any) -> str:
@@ -24,7 +24,7 @@ def _store_labels(stores: list[dict], category: str) -> list[str]:
     return [f"{count}× {name}" if count > 1 else name for name, count in grouped.values()]
 
 
-def _pounds(value: Any) -> str | None:
+def _whole_number(value: Any) -> str | None:
     if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0:
         return f"{value:,.0f}"
     return None
@@ -40,18 +40,7 @@ def build_admin_data(*, summary: Any, briefing: Any, player_name: str,
         return {}
     try:
         flight = _matched_flight(summary, briefing)
-        roster = _attr(_attr(briefing, "own_flight"), "roster")
-        matches = []
-        for index, field in enumerate(("lead", "wing", "element", "four")):
-            rank_and_name = str(_attr(roster, field, "") or "").split(maxsplit=1)
-            if len(rank_and_name) == 2 and _pilot_name(rank_and_name[1]) == _pilot_name(player_name):
-                matches.append(index)
-        if len(matches) != 1:
-            return {}
-        members = [m for m in flight.get("aircraft_members", []) if m["index"] == matches[0]]
-        if len(members) != 1:
-            return {}
-        member = members[0]
+        member = _matched_member(flight, briefing, player_name)
         stores = member["stores"]
         classified = all(s["category"] is not None for s in stores)
         # A missing classification may be a tank, so do not show partial lists.
@@ -62,8 +51,9 @@ def build_admin_data(*, summary: Any, briefing: Any, player_name: str,
             groups["tanks"].append("CFT")
         return {
             **groups,
-            "gross_weight": _pounds(member.get("gross_weight_lb")),
-            "takeoff_fuel": _pounds(member.get("takeoff_fuel_lb")),
+            "gross_weight": _whole_number(member.get("gross_weight_lb")),
+            "takeoff_fuel": _whole_number(member.get("takeoff_fuel_lb")),
+            "drag_index": _whole_number(member.get("drag_index")),
         }
     except (ValueError, TypeError, KeyError):
         return {}

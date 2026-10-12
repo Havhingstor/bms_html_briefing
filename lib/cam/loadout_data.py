@@ -20,11 +20,18 @@ def _weight(value) -> float:
     return number
 
 
+def _drag_index(value) -> int:
+    if type(value) is not int or value < 0:
+        raise ValueError("Invalid drag index")
+    return value
+
+
 def _loadout_data(flight, loadout, aircraft):
     stores: list[SummaryStore] = []
     external_fuel = 0
     dry_weight = 0
-    fuel_known = dry_known = True
+    drag_index = 0
+    fuel_known = dry_known = drag_known = True
     for station in loadout.nonempty_hardpoints:
         weapon = station.weapon
         valid = station.weapon_id > 0 and station.weapon_count > 0 and weapon is not None
@@ -52,12 +59,13 @@ def _loadout_data(flight, loadout, aircraft):
             "category": category,
         })
         if not valid:
-            fuel_known = dry_known = False
+            fuel_known = dry_known = drag_known = False
             continue
         try:
             external_fuel += station.weapon_count * _weight(weapon.fuel_capacity_lb)
         except (ValueError, TypeError):
             fuel_known = False
+        hardware = None
         try:
             if aircraft is None:
                 raise ValueError("Unresolved aircraft")
@@ -71,7 +79,25 @@ def _loadout_data(flight, loadout, aircraft):
             # Optional theater data must not discard otherwise usable stores/fuel.
             logger.debug("Admin hardware unavailable: %s", exc)
             dry_known = False
-    return stores, external_fuel if fuel_known else None, dry_weight if dry_known else None
+        try:
+            external = aircraft.simulation_data.external_hardpoints
+            if not 0 <= station.hardpoint_index < len(external):
+                raise ValueError("Missing external hardpoint flag")
+            flag = external[station.hardpoint_index]
+            if flag not in (0, 1):
+                raise ValueError("Invalid external hardpoint flag")
+            if flag:
+                # Raw loadout DI: each store, plus one rack/pylon per station.
+                # Internal stores are excluded. The displayed baseline and
+                # fitted CFT increment are added per member below.
+                drag_index += (station.weapon_count * _drag_index(weapon.drag_index)
+                               + _drag_index(hardware.rack.drag_index)
+                               + _drag_index(hardware.pylon.drag_index))
+        except Exception as exc:
+            logger.debug("Admin drag index unavailable: %s", exc)
+            drag_known = False
+    return (stores, external_fuel if fuel_known else None,
+            dry_weight if dry_known else None, drag_index if drag_known else None)
 
 
 def build_aircraft_members(flight: FlightUnit) -> list[SummaryAircraftMember]:
@@ -92,10 +118,11 @@ def build_aircraft_members(flight: FlightUnit) -> list[SummaryAircraftMember]:
     decoded = [_loadout_data(flight, loadout, aircraft) for loadout in loadouts]
     members: list[SummaryAircraftMember] = []
     for index in range(count):
-        stores, external_fuel, dry_weight = decoded[0 if len(decoded) == 1 else index]
+        stores, external_fuel, dry_weight, drag_index = decoded[0 if len(decoded) == 1 else index]
         member: SummaryAircraftMember = {
             "index": index, "stores": stores, "loaded_cft": None,
             "takeoff_fuel_lb": None, "gross_weight_lb": None,
+            "drag_index": None,
         }
         members.append(member)
         if aircraft is None:
@@ -106,6 +133,14 @@ def build_aircraft_members(flight: FlightUnit) -> list[SummaryAircraftMember]:
             if loaded_cft not in (0, 1):
                 raise ValueError("Invalid CFT flag")
             member["loaded_cft"] = bool(loaded_cft)
+            try:
+                # BMS's loadout display starts at 1.0 for a clean aircraft.
+                # Keep this display convention distinct from aerodynamic Cd;
+                # do not feed the baseline into a future stores-drag model.
+                cft_drag = _drag_index(sim.fuel_system.get("cft_drag")) if loaded_cft else 0
+                member["drag_index"] = 1 + _drag_index(drag_index) + cft_drag
+            except (ValueError, TypeError) as exc:
+                logger.debug("Admin drag index unavailable: %s", exc)
             cft_fuel = _weight(sim.cft_fuel_lb) if loaded_cft else 0
             # BMS saves a signed offset, not a literal internal-fuel quantity.
             # At empty fuel this offset cancels fitted tank and CFT capacities.

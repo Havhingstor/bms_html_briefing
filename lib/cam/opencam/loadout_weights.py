@@ -15,11 +15,13 @@ class HardwareReference:
     weight_lb: int | None = None
     source_path: Path | None = None
     reason: str | None = None
+    drag_index: int | None = None
 
     def to_view(self) -> dict[str, object]:
         return {
             "status": self.status, "ct_index": self.ct_index,
             "weapon_number": self.weapon_number, "weight_lb": self.weight_lb,
+            "drag_index": self.drag_index,
             "source_path": None if self.source_path is None else str(self.source_path),
             "reason": self.reason,
         }
@@ -61,7 +63,7 @@ class LoadoutHardware:
 
 def _hardware_reference(support: SupportData, ct_index: int | None) -> HardwareReference:
     if ct_index == 0:
-        return HardwareReference("no_hardware", ct_index=0, weight_lb=0,
+        return HardwareReference("no_hardware", ct_index=0, weight_lb=0, drag_index=0,
                                  reason="authored CT reference 0")
     if ct_index is None or ct_index < 0:
         return HardwareReference("unresolved", ct_index=ct_index,
@@ -78,7 +80,7 @@ def _hardware_reference(support: SupportData, ct_index: int | None) -> HardwareR
         return HardwareReference("unresolved", ct_index, weapon.number,
                                  source_path=weapon.source_path, reason="negative hardware weight")
     return HardwareReference("resolved", ct_index, weapon.number, weapon.weight_lb,
-                             weapon.source_path)
+                             weapon.source_path, drag_index=weapon.drag_index)
 
 
 def resolve_loadout_hardware(
@@ -98,7 +100,7 @@ def resolve_loadout_hardware(
     common = dict(vehicle_number=vehicle_number, hardpoint_index=hardpoint_index,
                   weapon_number=weapon_number, quantity=quantity)
     if weapon_number == 0:
-        absent = HardwareReference("no_hardware", weight_lb=0, reason="empty serialized station")
+        absent = HardwareReference("no_hardware", weight_lb=0, drag_index=0, reason="empty serialized station")
         return LoadoutHardware(**common, status="no_hardware", rack=absent, pylon=absent)
     group_name = None
     aircraft_path = None

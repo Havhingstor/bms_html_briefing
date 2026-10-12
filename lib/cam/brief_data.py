@@ -22,7 +22,8 @@ from lib.cam.types import (
 
 from .opencam.uni_wrappers import FlightUnit, PackageUnit, Unit
 from .loadout_data import build_aircraft_members
-from lib.fuel import FuelModelError, cruise_rate_lb_nm
+from lib.fuel import FuelModelError
+from lib.route_fuel import RoutePerformance
 
 logger = logging.getLogger("html_brief_log")
 
@@ -185,7 +186,7 @@ def _fuel_profile(flight: FlightUnit, cache: dict[int, FuelProfile]) -> FuelProf
     if vehicle_number in cache:
         return cache[vehicle_number]
     profile: FuelProfile = {
-        "rate_lb_nm": None,
+        "route_performance": None,
         "internal_fuel_lb": None,
         "aircraft_type_name": None,
         "source_path": None,
@@ -197,12 +198,12 @@ def _fuel_profile(flight: FlightUnit, cache: dict[int, FuelProfile]) -> FuelProf
             raise FuelModelError("The saved flight has no resolved aircraft data.")
         profile["aircraft_type_name"] = aircraft.aircraft_type.name
         profile["source_path"] = str(aircraft.aircraft_type.acdata_path)
-        profile["rate_lb_nm"] = cruise_rate_lb_nm(aircraft.simulation_data)
+        profile["route_performance"] = RoutePerformance.from_simulation(aircraft.simulation_data).to_view()
         profile["internal_fuel_lb"] = aircraft.simulation_data.airframe.internal_fuel_lb
     except Exception as exc:
         # Malformed/missing optional files must not discard the flight or package.
         logger.debug("Minimum fuel unavailable for vehicle %s: %s", vehicle_number, exc)
-        profile["rate_lb_nm"] = None
+        profile["route_performance"] = None
         profile["unavailable_reason"] = str(exc)
     if isinstance(vehicle_number, int):
         cache[vehicle_number] = profile

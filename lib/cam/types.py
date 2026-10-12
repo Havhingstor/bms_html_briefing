@@ -173,7 +173,7 @@ class SummaryFlightTiming(TypedDict):
 
 
 class FuelProfile(TypedDict):
-    rate_lb_nm: int | None
+    route_performance: dict[str, object] | None
     internal_fuel_lb: float | None
     aircraft_type_name: str | None
     source_path: str | None
@@ -193,6 +193,7 @@ class SummaryAircraftMember(TypedDict):
     loaded_cft: bool | None
     takeoff_fuel_lb: float | None
     gross_weight_lb: float | None
+    drag_index: int | None
 
 
 class SummaryFlight(TypedDict):
