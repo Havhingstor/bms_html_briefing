@@ -1,0 +1,2673 @@
+\documentclass[10pt,a4paper]{amsart}
+\usepackage[margin=17mm]{geometry}
+\usepackage{listings}
+\usepackage{hyperref}
+%\usepackage[obeyspaces]{url}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{3pt}
+\setlength{\emergencystretch}{3em}
+\lstset{basicstyle=\ttfamily\footnotesize,breaklines=true,
+  columns=fullflexible,keepspaces=true,showstringspaces=false,
+  literate={²}{{\textsuperscript{2}}}1}
+\DeclareMathOperator{\clip}{clip}
+\DeclareMathOperator{\trunc}{trunc}
+\DeclareMathOperator{\rnd}{round}
+\DeclareMathOperator{\atan}{atan2}
+\title{Formulas}
+\date{12 October 2026}
+\begin{document}
+\maketitle
+
+This is a compendium of some computations used in the code, presented in (hopefully) a  human-readable form. Unprefixed paths are repository paths; \textbf{B} is the BMS installation,
+\textbf{I} is \path{B/Data/Add-On Israel}. Units: lb, lbf, ft$^2$ unless stated;
+arguments of trigonometric functions are converted to radians. Examples are rounded for reading.
+
+\tableofcontents
+
+\section{Moon phase and rise/set}\label{sec:moon}
+\subsection{Moon phase}\label{subsec:moon-phase}
+\subsubsection*{Value}
+Moon phase displayed in the Weather table, selected from the
+cycle percentage $p$ for the campaign date.
+
+\subsubsection*{Formula}
+
+\[
+ p=\trunc(100d/29.530588853)\bmod100.
+\]
+
+\subsubsection*{Variables}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item $p$: integer cycle percentage.
+\item $d=(\text{date}-2000\text{-}01\text{-}06).\text{days}$: whole days since
+6 January 2000, where $\text{date}$ is the campaign calendar date.
+\end{itemize}
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $\text{date}$ is read from the year/month/day entries in the first
+four little-endian unsigned 32-bit integers of \path{<save>.twx}; the first
+integer is ignored. $d$ is computed from that date and the fixed epoch
+6 January 2000 stored as \texttt{date0} in \path{lib/moon.py}.
+\item $p$ is computed from $d$ using the fixed 29.530588853-day period in
+\path{lib/moon.py:moonphase_crude}. Time of day is ignored; $p$ measures
+cycle progress, not illuminated fraction.
+\item The displayed phase is selected from $p$ using the thresholds in
+\path{lib/moon.py:moonphase_crude}: new 0--4 or 96--99; waxing crescent
+5--20; first quarter 21--30; waxing gibbous 31--45; full 46--55;
+waning gibbous 56--70; third quarter 71--80; waning crescent 81--95.
+\end{itemize}
+
+\subsubsection*{Example}
+\path{I/Campaign/weight_tests.twx}: 2026-10-10,
+$d=9774$, $p=97\Rightarrow$ displayed phase \texttt{New Moon}.
+\subsubsection*{Code}
+\path{lib/moon.py}, \texttt{moonphase\_crude}:
+\begin{lstlisting}[numbers=left,firstnumber=113,numberstyle=\tiny,xleftmargin=2em]
+delta_days = (date - date0).days
+phase = int(delta_days*100/29.530588853) % 100
+\end{lstlisting}
+
+\subsection{Moonrise and moonset}\label{subsec:moonrise-moonset}
+\subsubsection*{Values}
+Moonrise and moonset times for the theater centre on the
+campaign date, displayed in the Weather table as \texttt{HH:MMz} (UTC).
+
+\subsubsection*{Formulas}
+The lunar-position series follows Meeus~\cite[Chapter~45]{meeus1991},
+as referenced in \path{lib/moon.py:133}. Rise/set uses Julian date $JD$, lunar
+longitude/latitude $(\lambda,\beta)$, obliquity $\epsilon$ and Greenwich
+sidereal angle $\theta_G$. The formula is
+\[
+ \lambda=L'+10^{-6}\!\left[\sum_{j=1}^{n}E^{|m_j|}a_j
+ \sin(d_jD+m_jM+u_jM'+f_jF)+A_\lambda\right],
+\]
+with the analogous sum for $\beta$ (without $L'$).
+
+%$D,M,M',F,L',E$ and the
+%additive terms are time polynomials/expressions in \path{lib/moon.py:moon_long_lat};
+%the coefficient rows are \texttt{SIGMA\_LR\_TERMS} and \texttt{SIGMA\_B\_TERMS}.
+%Coefficients are millionths of a degree.
+Then
+\begin{align*}
+ \alpha&=\atan(\sin\lambda\cos\epsilon-\tan\beta\sin\epsilon,\cos\lambda),&
+ \delta&=\arcsin(\sin\beta\cos\epsilon+\cos\beta\sin\epsilon\sin\lambda),\\
+ h&=\arcsin[\sin\phi\sin\delta+\cos\phi\cos\delta\cos(\theta_G+\ell_E-\alpha)],&
+ t_*&=t_i+120\,\frac{|h_i|}{|h_i|+|h_{i+1}|}\quad\text{seconds}.
+\end{align*}
+
+\subsubsection*{Variables}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item $JD$: Julian date in days; $T=(JD-2451545)/36525$ is Julian centuries
+since J2000.
+\item $\lambda,\beta$: computed lunar ecliptic longitude and latitude,
+respectively.
+\item $L',D,F$: Moon's mean longitude, mean elongation and argument of
+latitude, respectively; computed from $T$ using Meeus's fixed polynomial
+coefficients in \texttt{moon\_long\_lat}.
+\item $M,M'$: Sun's and Moon's mean anomalies, respectively; also computed
+from $T$ using Meeus's fixed polynomial coefficients.
+\item $E=1-0.002516T-0.0000074T^2$: time-dependent eccentricity correction
+factor; the numerical coefficients are from Meeus.
+\item $n,j$: retained term count and summation index ($j=1,\ldots,n$);
+$n=5$ is the app's accuracy setting.
+\item $a_j$: fixed longitude-series amplitude from Meeus, in millionths of
+a degree, stored in \texttt{SIGMA\_LR\_TERMS}. The latitude series uses its
+own fixed amplitudes in \texttt{SIGMA\_B\_TERMS}.
+\item $d_j,m_j,u_j,f_j$: fixed integer multipliers from Meeus for
+$D,M,M',F$, respectively, stored in each row of the corresponding series table.
+\item $A_\lambda$: time-dependent additive longitude correction, computed
+as \texttt{Sl\_additive}; its fixed amplitudes 3958, 1962 and 318 are from Meeus.
+\item $\epsilon,\theta_G$: Earth's obliquity and Greenwich sidereal angle,
+respectively; computed for the sample time from $T$ and $JD$.
+\item $\alpha,\delta$: lunar right ascension and declination, respectively.
+\item $\phi,\ell_E$: observer latitude (north positive) and longitude
+(east positive), respectively; taken from the BMS theater centre.
+\item $h$: geometric lunar altitude.
+\item $i,t_i$: index and time (seconds) of the sample starting a two-minute
+interval containing a horizon crossing: $h_i\leq0<h_{i+1}$ for moonrise,
+or $h_i\geq0>h_{i+1}$ for moonset.
+\item $t_*$: interpolated crossing time.
+\end{itemize}
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $JD,T$ are computed from the campaign date read from
+\path{<save>.twx} and the two-minute sample times generated in
+\path{lib/moon.py:moon_rise_set_times}; \texttt{date\_to\_JD} and
+\texttt{date\_to\_T} in that file perform the conversions.
+\item $\phi,\ell_E$ are read from \texttt{Center Latitude} and
+\texttt{Center Longitude} in the active terrain's \path{NewTerrain/Theater.txt}
+by \path{lib/theater_paths.py}. Missing coordinates use the
+50 N, 50 W fallback in \path{lib/brief_render.py}.
+\item $L',D,F,M,M',E,A_\lambda$ are computed from $T$ and the resulting
+angles using Meeus's fixed coefficients, stored in
+\path{lib/moon.py:moon_long_lat}.
+\item $a_j,d_j,m_j,u_j,f_j$ are taken from Meeus's longitude-series
+table, stored as \texttt{SIGMA\_LR\_TERMS} in \path{lib/moon.py}.
+The $\beta$ series uses its own rows from \texttt{SIGMA\_B\_TERMS}
+in the same file.
+\item $n=5$ is the app's \texttt{accuracy} argument set in
+\path{lib/brief_render.py}; $j$ enumerates the first $n$ table rows.
+\item $\epsilon,\theta_G$ are computed from $T$ and $JD$ by
+\texttt{eps} and \texttt{sidereal\_time\_Greenwich} in \path{lib/moon.py}.
+\item $\lambda,\beta,\alpha,\delta,h$ are computed from these time,
+table and observer inputs by \texttt{moon\_long\_lat},
+\texttt{moon\_asc\_decl} and \texttt{moon\_angle\_above\_horizon} in
+\path{lib/moon.py}. $h$ is geometric altitude, with no refraction or
+parallax correction.
+\item $i,t_i,t_*$ are obtained from the sampled altitudes and times by
+\path{lib/moon.py:moon_rise_set_times}: indexes $i$ in $t_i$ is determined by the sign changes of $h$;
+linear interpolation gives the rise/set time $t_*$.
+\end{itemize}
+
+\subsubsection*{Example}
+\path{I/Campaign/weight_tests.twx}: 2026-10-10;
+Israel \path{Theater.txt}: 32 N, 35 E. Rise 03:16:47.9, set 14:53:46.4 UTC
+(displayed \texttt{Moonrise: 03:16z} / \texttt{Moonset: 14:53z}).
+\subsubsection*{Code}
+The excerpts follow $(\lambda,\beta)\to(\alpha,\delta)\to h$ and then find
+the horizon crossings. In the final function, \texttt{tt} holds two-minute
+UTC sample datetimes; \texttt{hh[i]} is the lunar altitude $h_i$ in degrees
+at \texttt{tt[i]}. The lists \texttt{rise\_ends} and \texttt{set\_ends}
+hold indices of crossing intervals; \texttt{rise} and \texttt{set} hold the
+interpolated UTC datetimes. The loop variable \texttt{n} is a time-sample
+counter, separate from the periodic-term count $n$ above.
+The caller in \path{lib/brief_render.py:395} supplies \texttt{accuracy=5}
+and west-positive longitude $-\ell_E$.
+
+\path{lib/moon.py}, \texttt{moon\_long\_lat}: compute and return
+$(\lambda,\beta)$.
+\begin{lstlisting}[numbers=left,firstnumber=166,numberstyle=\tiny,xleftmargin=2em]
+l = [(E**(abs(c[1])))*c[4]*sin((c[0]*D + c[1]*M + c[2]*Mp + c[3]*F)) for c in SIGMA_LR_TERMS[0:accuracy]]
+b = [(E**(abs(c[1])))*c[4]*sin((c[0]*D + c[1]*M + c[2]*Mp + c[3]*F)) for c in SIGMA_B_TERMS[0:accuracy]]
+
+Sl_additive = (3958*sin(A1)
+               + 1962*sin(Lp - F)
+               + 318*sin(A2))
+Sb_additive = (-2235*sin(Lp)
+               +382*sin(A3)
+               +175*sin(A1-F)
+               +175*sin(A1+F)
+               +127*sin(Lp - Mp)
+               -115*sin(Lp+Mp))
+
+Sl = sum(l) + Sl_additive
+Sb = sum(b) + Sb_additive
+
+lambd = (degrees(Lp) + Sl/(10**6)) % 360
+beta = (Sb/(10**6)) % 360
+
+return(lambd, beta)
+\end{lstlisting}
+
+\path{lib/moon.py}, \texttt{moon\_asc\_decl}: convert these coordinates to
+$(\alpha,\delta)$.
+\begin{lstlisting}[numbers=left,firstnumber=188,numberstyle=\tiny,xleftmargin=2em]
+def moon_asc_decl(date, accuracy = 60):
+    (lambd, beta) = [radians(x) for x in moon_long_lat(date, accuracy = accuracy)]
+    T = date_to_T(date)
+    reps = radians(eps(T))
+    alpha = atan2((sin(lambd)*cos(reps)-tan(beta)*sin(reps)),(cos(lambd)))
+    delta = asin(sin((beta))*cos((reps))+cos((beta))*sin((reps))*sin((lambd)))
+    return (degrees(alpha), degrees(delta))
+\end{lstlisting}
+
+\path{lib/moon.py}, \texttt{moon\_angle\_above\_horizon}: use
+$(\alpha,\delta)$ and the observer coordinates to obtain $h$.
+\begin{lstlisting}[numbers=left,firstnumber=197,numberstyle=\tiny,xleftmargin=2em]
+def moon_angle_above_horizon(date, latitude, longitude, accuracy = 60):
+    rlatitude = radians(latitude)
+    (alpha, delta) = moon_asc_decl(date, accuracy = accuracy)
+    rdelta = radians(delta)
+    H = sidereal_time_Greenwich(date) - longitude - alpha
+    rH = radians(H)
+    return degrees(asin(sin(rlatitude)*sin(rdelta) + cos(rlatitude)*cos(rdelta)*cos(rH)))
+\end{lstlisting}
+
+\path{lib/moon.py}, \texttt{moon\_rise\_set\_times}: build \texttt{tt} and
+\texttt{hh}, select sign changes, and interpolate \texttt{rise} and \texttt{set}.
+\begin{lstlisting}[numbers=left,firstnumber=206,numberstyle=\tiny,xleftmargin=2em]
+def moon_rise_set_times(day, latitude, longitude, accuracy = 60):
+    # compute angle every two minutes
+    date = dt.datetime.combine(day, dt.time.min)
+    tt = [date + n*dt.timedelta(minutes = 2) for n in range(24*30)]
+    hh = [moon_angle_above_horizon(t, latitude = latitude, longitude = longitude, accuracy = accuracy) for t in tt]
+    rise_ends = [i for i in range(len(tt)-1) if hh[i] <= 0 and hh[i+1] > 0]
+    set_ends = [i for i in range(len(tt)-1) if hh[i] >= 0 and hh[i+1] < 0]
+    rise = [tt[i] + (tt[i+1] - tt[i])*abs(hh[i])/(abs(hh[i]) +  abs(hh[i+1])) for i in rise_ends]
+    set = [tt[i] + (tt[i+1] - tt[i])*abs(hh[i])/(abs(hh[i]) +  abs(hh[i+1])) for i in set_ends]
+    return (rise, set)
+\end{lstlisting}
+
+
+\section{Takeoff fuel, gross weight and displayed DRAG}\label{sec:loadout}
+
+\subsection{Takeoff fuel}\label{subsec:takeoff-fuel}
+\subsubsection*{Value}
+Takeoff fuel for the selected pilot's saved aircraft, displayed as
+\texttt{T/O Fuel} in the Admin section, rounded to whole lb. Unavailable values show a dash.
+
+\subsubsection*{Formula}
+\[
+ F_{TO}=F_{save}+\sum_s n_s C_s+bC_{CFT}.
+\]
+
+\subsubsection*{Variables}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item $F_{TO},F_{save}$: computed takeoff fuel and the saved member's signed
+fuel offset, respectively, in lb.
+\item $s,n_s$: occupied station index and its saved store count. The
+zero-weight internal gun/ammunition entry is omitted.
+\item $C_s$: fuel capacity per store, in lb; WCD \texttt{Strength}
+when \texttt{Flags \& 0x02} is nonzero, otherwise zero.
+\item $b$: 1 if the aircraft supports CFTs and the saved member has them
+fitted, otherwise 0.
+\item $C_{CFT},C_{int}$: CFT and internal fuel capacities, in lb.
+\item $C_{fit}=C_{int}+\sum_s n_s C_s+bC_{CFT}$: fitted capacity, in lb;
+the app requires $0\leq F_{TO}\leq C_{fit}$.
+\end{itemize}
+
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $F_{save}$ is decoded from the member's \texttt{fuel\_initial\_raw}
+entry in the embedded \texttt{.uni} of \path{<save>.cam}; the array contains
+four signed little-endian 32-bit offsets. This offset can be negative and
+is not a literal internal-fuel quantity.
+\item $s,n_s$ come from the loadout's \texttt{weapon\_ids} and
+\texttt{weapon\_counts} in that \texttt{.uni} file. A single loadout is
+shared; with one per active member, each uses its own. Other loadout
+counts are rejected.
+\item $C_s$ is taken from \texttt{Strength} when \texttt{Flags \& 0x02}
+is nonzero in the theater's \path{Terrdata/objects/Falcon4_WCD.xml},
+otherwise it is zero. The saved store ID selects the WCD \texttt{Num} row.
+\item $b$ is computed from the member's byte flag in
+\texttt{loaded\_cft\_raw} in the CAM's embedded \texttt{.uni}, together
+with \path{aero_new2.has_cft} from the aircraft's \path{Sim/Acdata/*.txtpb}.
+The saved flag is used only when the aircraft supports CFTs.
+\item $C_{CFT},C_{int}$ are read from \path{auxaero.fuel.cft_fuel} and
+\path{airframe.internal_fuel_lbs}, respectively, in the aircraft's
+\path{Sim/Acdata/*.txtpb}.
+\item $F_{TO},C_{fit}$ are computed from the preceding saved values and
+capacities in \path{lib/cam/loadout_data.py:build_aircraft_members},
+after \texttt{\_loadout\_data} in that file sums $n_sC_s$.
+\end{itemize}
+
+\subsubsection*{Example}
+Falcon2-1, flight 2887/member 0 in \path{I/Campaign/weight_tests.cam},
+uses \path{I/Sim/Acdata/F-16I-52+ IAF.txtpb}.
+The save gives $F_{save}=5920$, $b=1$ and one TK300 tank
+(WCD \texttt{Num=782}, \texttt{Flags=2}, \texttt{Strength=2040}).
+The aircraft file gives $C_{CFT}=3060$ and $C_{int}=5920$:
+\[
+ F_{TO}=5920+1(2040)+1(3060)=11020\ \text{lb}.
+\]
+This equals $C_{fit}$; Admin displays \texttt{11,020}.
+
+\subsubsection*{Code}
+Here \texttt{flight} is the parsed CAM flight, \texttt{station} is the
+current saved hardpoint, and \texttt{weapon} is its WCD row.
+In \texttt{\_loadout\_data}, \texttt{external\_fuel} starts at zero and
+accumulates $n_sC_s$ for each retained station. Its returned total is passed
+to \texttt{build\_aircraft\_members}. There, \texttt{sim} is the parsed
+aircraft data, \texttt{index} selects the saved member and
+\texttt{loaded\_cft} is $b$. The helper \texttt{\_weight} checks that its
+argument is a finite, nonnegative number.
+
+\path{lib/cam/loadout_data.py}, \texttt{\_loadout\_data}:
+\begin{lstlisting}[numbers=left,firstnumber=67,numberstyle=\tiny,xleftmargin=2em]
+external_fuel += station.weapon_count * _weight(weapon.fuel_capacity_lb)
+\end{lstlisting}
+
+\path{lib/cam/loadout_data.py}, \texttt{build\_aircraft\_members}:
+\begin{lstlisting}[numbers=left,firstnumber=152,numberstyle=\tiny,xleftmargin=2em]
+cft_fuel = _weight(sim.cft_fuel_lb) if loaded_cft else 0
+# BMS saves a signed offset, not a literal internal-fuel quantity.
+# At empty fuel this offset cancels fitted tank and CFT capacities.
+fuel = flight.initial_fuel_lb[index] + _weight(external_fuel) + cft_fuel
+capacity = _weight(sim.airframe.internal_fuel_lb) + _weight(external_fuel) + cft_fuel
+if not 0 <= fuel <= capacity:
+    raise ValueError("Planned fuel is outside fitted capacity")
+member["takeoff_fuel_lb"] = fuel
+\end{lstlisting}
+
+\subsection{Takeoff gross weight}\label{subsec:gross-weight}
+\subsubsection*{Value}
+Takeoff gross weight for the selected pilot's saved aircraft, displayed as
+\texttt{Gross Wt} in Admin, rounded to whole lb. Unavailable values show a dash.
+
+\subsubsection*{Formula}
+\[
+ W_{TO}=W_{empty}+F_{TO}+bW_{CFT}
+       +\sum_s(n_sw_s+w_{rack,s}+w_{pylon,s}).
+\]
+
+\subsubsection*{Variables}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item $W_{TO}$: computed takeoff gross weight, in lb.
+\item $W_{empty},W_{CFT}$: clean-aircraft and dry CFT weights,
+respectively, in lb.
+\item $F_{TO},b$: takeoff fuel and fitted-CFT flag from section~\ref{subsec:takeoff-fuel}.
+\item $s,n_s$: retained occupied station index and its saved store count.
+\item $w_s,w_{rack,s},w_{pylon,s}$: dry weight per store, rack
+and pylon on station $s$, respectively, in lb. Hardware counts once per
+occupied station; an explicitly absent rack or pylon contributes zero.
+\end{itemize}
+
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $W_{empty},W_{CFT}$ are read from \path{airframe.empty_weight_lbs}
+and \path{auxaero.fuel.cft_empty_weight}, respectively, in the aircraft's
+\path{Sim/Acdata/*.txtpb}.
+\item $F_{TO},b,s,n_s$ reuse the fuel calculation and saved member/loadout
+data from \path{<save>.cam} described in section~\ref{subsec:takeoff-fuel}.
+\item $w_s$ is read from \texttt{Weight} in
+\path{Terrdata/objects/Falcon4_WCD.xml}, selecting \texttt{Num} by the
+saved store ID. It excludes fuel contents. Internal stores add weight;
+the zero-weight gun/ammunition entry at station 0 is already accounted
+for in clean weight and is skipped.
+\item $w_{rack,s},w_{pylon,s}$ are read from WCD \texttt{Weight} after
+resolving hardware. The aircraft \texttt{.txtpb}'s
+\path{auxaero.hardpoints.hardpoint_grp} selects a group in
+\path{Terrdata/objects/BmsRack.dat}; the first compatible rack with
+sufficient \texttt{RackStations} capacity is used. Its \texttt{RackCT}
+and \texttt{PylonCT} select hardware by WCD \texttt{CtIdx}.
+Compatibility uses \path{Falcon4_CT.xml} \texttt{MoverDefinitionData}
+to link WCD \texttt{CtIdx} to \path{Falcon4_SWD.XML}
+\texttt{Num}/\texttt{WpnClass}; these XML files share the objects directory.
+Unresolved hardware leaves gross weight unavailable.
+\item $W_{TO}$ is computed by summing the preceding fuel, airframe,
+CFT, store and hardware contributions in
+\path{lib/cam/loadout_data.py:build_aircraft_members}; the store/hardware
+sum is computed by \texttt{\_loadout\_data} in that file.
+\end{itemize}
+
+\subsubsection*{Example}
+For the same Falcon2-1 loadout, WCD store rows 158, 256, 782, 179 and 181
+give four A120Bs, four CB52Bs, one TK300, one AAQ13 and one AAQ28:
+\[
+ 4(338)+4(785)+392+429+441=5754\ \text{lb}.
+\]
+Selected hardware rows 661, 585, 780, 779 and 622 contribute
+\[
+ 2(95)+2(369)+2(320)+172+42=1782\ \text{lb}.
+\]
+With $W_{empty}=22000$, $W_{CFT}=1700$, $b=1$ and $F_{TO}=11020$:
+\[
+ W_{TO}=22000+11020+1700+(5754+1782)=42256\ \text{lb}.
+\]
+Admin displays \texttt{42,256}.
+
+\subsubsection*{Code}
+In \texttt{\_loadout\_data}, \texttt{dry\_weight} starts at zero.
+The resolver supplies the station's rack and pylon; the returned sum is
+passed to \texttt{build\_aircraft\_members}. There, \texttt{clean} is
+$W_{empty}$, \texttt{cft\_dry} is $bW_{CFT}$ and \texttt{fuel} is $F_{TO}$
+from section~\ref{subsec:takeoff-fuel}. The remaining names and validation helper are as above.
+
+\path{lib/cam/loadout_data.py}, \texttt{\_loadout\_data}:
+\begin{lstlisting}[numbers=left,firstnumber=74,numberstyle=\tiny,xleftmargin=2em]
+hardware = resolve_loadout_hardware(
+    flight.support, aircraft.vehicle.number, station.hardpoint_index,
+    station.weapon_id, station.weapon_count,
+)
+dry_weight += (station.weapon_count * _weight(weapon.weight_lb)
+               + _weight(hardware.rack.weight_lb) + _weight(hardware.pylon.weight_lb))
+\end{lstlisting}
+
+\path{lib/cam/loadout_data.py}, \texttt{build\_aircraft\_members}:
+\begin{lstlisting}[numbers=left,firstnumber=164,numberstyle=\tiny,xleftmargin=2em]
+cft_dry = _weight(sim.fuel_system.get("cft_empty_weight")) if loaded_cft else 0
+clean = _weight(sim.airframe.empty_weight_lb)
+if clean == 0:
+    raise ValueError("Missing clean weight")
+member["gross_weight_lb"] = clean + _weight(dry_weight) + cft_dry + fuel
+\end{lstlisting}
+
+\subsection{Loadout drag factor}\label{subsec:drag}
+\subsubsection*{Value}
+The selected pilot's saved loadout drag factor, displayed as \texttt{DRAG}
+in Admin as a whole, dimensionless number. Unavailable values show a dash.
+
+\subsubsection*{Formula}
+\[
+ DI=1+bDI_{CFT}
+       +\sum_{s\;\mathrm{external}}(n_sDI_s+DI_{rack,s}+DI_{pylon,s}).
+\]
+
+\subsubsection*{Variables}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item $DI$: computed displayed drag factor; 1 is the fixed clean-aircraft
+display baseline used by the app and checked against BMS.
+\item $b,DI_{CFT}$: fitted-CFT flag from section~\ref{subsec:takeoff-fuel} and the aircraft's
+CFT drag increment, respectively.
+\item $s,n_s$: occupied external station index and its saved store count.
+A station is external when its \texttt{is\_external\_hardpoint}
+flag is 1.
+\item $DI_s,DI_{rack,s},DI_{pylon,s}$: fixed WCD drag indices per store,
+rack and pylon, respectively. Hardware counts once per external station.
+\end{itemize}
+
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $DI_s,DI_{rack,s},DI_{pylon,s}$ are read from \texttt{Drag} in
+\path{Terrdata/objects/Falcon4_WCD.xml}; store IDs and hardware selection
+use the same files and rules as section~\ref{subsec:gross-weight}.
+\item $s,n_s$ come from the saved loadout in \path{<save>.cam}, restricted
+to stations whose \path{auxaero.hardpoints.is_external_hardpoint.values}
+entry is 1 in the aircraft's \path{Sim/Acdata/*.txtpb}.
+Internal stores and their hardware contribute no drag to the sum.
+\item $b$ is obtained from the saved CFT flag and aircraft support flag
+as in section~\ref{subsec:takeoff-fuel}; $DI_{CFT}$ is read from \path{auxaero.fuel.cft_drag}
+in the aircraft's \path{Sim/Acdata/*.txtpb}. This increment is added
+only when CFTs are fitted.
+\item The baseline 1 in $DI$ is a fixed display convention in
+\path{lib/cam/loadout_data.py:build_aircraft_members}, checked against
+BMS's clean-loadout display. It is not an aerodynamic drag coefficient
+or an aircraft-file field.
+\item $DI$ is computed from the external store/hardware sum, baseline
+and fitted CFT increment in \path{lib/cam/loadout_data.py}.
+Missing drag data leaves DRAG unavailable independently of otherwise
+known fuel and weight.
+\end{itemize}
+
+\subsubsection*{Example}
+All retained Falcon2-1 stations in this save are external. The same store
+and hardware WCD rows listed in section~\ref{subsec:gross-weight} give, respectively,
+\[
+ 4(4)+4(22)+17+22+22=165,\qquad
+ 2(2)+2(24)+2(14)+16+3=99.
+\]
+The aircraft file gives $DI_{CFT}=20$, hence
+\[
+ DI=1+1(20)+165+99=285.
+\]
+Admin displays \texttt{285}, matching the BMS loadout-screen reading.
+Removing CFTs gives 265; a clean loadout without CFTs gives 1.
+
+\subsubsection*{Code}
+In \texttt{\_loadout\_data}, \texttt{drag\_index} starts at zero and accumulates
+the external store/hardware sum; \texttt{external} contains the
+station flags. The \texttt{hardware} objects were resolved in section~\ref{subsec:gross-weight}.
+The helper \texttt{\_drag\_index} validates a nonnegative integer.
+In \texttt{build\_aircraft\_members}, the returned raw sum is augmented
+with the clean baseline and fitted CFT increment before assignment to
+\texttt{member["drag\_index"]}.
+
+\path{lib/cam/loadout_data.py}, \texttt{\_loadout\_data}:
+\begin{lstlisting}[numbers=left,firstnumber=85,numberstyle=\tiny,xleftmargin=2em]
+external = aircraft.simulation_data.external_hardpoints
+if not 0 <= station.hardpoint_index < len(external):
+    raise ValueError("Missing external hardpoint flag")
+flag = external[station.hardpoint_index]
+if flag not in (0, 1):
+    raise ValueError("Invalid external hardpoint flag")
+if flag:
+    # Raw loadout DI: each store, plus one rack/pylon per station.
+    # Internal stores are excluded. The displayed baseline and
+    # fitted CFT increment are added per member below.
+    drag_index += (station.weapon_count * _drag_index(weapon.drag_index)
+                   + _drag_index(hardware.rack.drag_index)
+                   + _drag_index(hardware.pylon.drag_index))
+\end{lstlisting}
+
+\path{lib/cam/loadout_data.py}, \texttt{build\_aircraft\_members}:
+\begin{lstlisting}[numbers=left,firstnumber=148,numberstyle=\tiny,xleftmargin=2em]
+cft_drag = _drag_index(sim.fuel_system.get("cft_drag")) if loaded_cft else 0
+member["drag_index"] = 1 + _drag_index(drag_index) + cft_drag
+\end{lstlisting}
+
+\section{Atmosphere, aerodynamic drag and fuel flow}\label{sec:flow}
+This is a technical section required for further calculations. None of the values are displayed in the briefing directly.
+
+\subsection{Atmosphere}\label{subsec:atmosphere}
+\subsubsection*{Values}
+Mach number, true airspeed and dynamic pressure at a given MSL altitude
+and calibrated airspeed. They supply the route-performance model below;
+the liftoff model uses a fixed sea-level reference.
+
+\subsubsection*{Formulas}
+Temperature and pressure follow the first two layers of the
+\emph{U.S. Standard Atmosphere, 1976} \cite[Part~1]{ussa1976}.
+The app uses MSL altitude directly as layer height, without converting
+to geopotential height. The subsonic airspeed and pressure relations
+follow \cite[eqs.~(1), (2), (5)--(7) and (12)]{aiken1946}:
+\begin{align*}
+ M&=\sqrt{\frac{2}{\kappa-1}
+       \left[\left(1+\frac{q_c}{p}\right)^{(\kappa-1)/\kappa}-1\right]},\\
+ V_{TAS}&=M\sqrt{\kappa RT}\,\frac{3600}{1852},&
+ q&=\frac{\kappa}{2}pM^2\,\frac{0.09290304}{4.4482216152605}.
+\end{align*}
+
+\subsubsection*{Variables}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item $M,V_{TAS},q$: computed Mach number (dimensionless), true airspeed
+in knots and dynamic pressure in lbf/ft$^2$, respectively.
+\item $h,V_{CAS}$: input MSL altitude in feet and calibrated airspeed in
+knots; $z=0.3048h$ and $v_c=V_{CAS}(1852/3600)$ are their metre and
+metre-per-second equivalents.
+\item $R=287.05287$ J/(kg K), $g=9.80665$ m/s$^2$, $\kappa=1.4$:
+fixed dry-air gas constant, gravitational acceleration and specific-heat
+ratio used by the code.
+\item $T_0=288.15$ K, $p_0=101325$ Pa: fixed ISA sea-level temperature
+and pressure.
+\item $L_T=0.0065$ K/m, $z_t=11000$ m: fixed temperature lapse rate
+below the tropopause and its height; the layer above is isothermal.
+\item $T=T_0-L_T\min(z,z_t)$: computed air temperature in K.
+\item $p$: computed static pressure in Pa,
+\[
+ p=p_0(T/T_0)^{g/(RL_T)}
+       \exp\!\left[-\frac{g\max(z-z_t,0)}{RT}\right].
+\]
+\item $q_c$: impact pressure in Pa corresponding to the input CAS,
+\[
+ q_c=p_0\left[\left(1+\frac{\kappa-1}{2}
+              \frac{v_c^2}{\kappa RT_0}\right)^{\kappa/(\kappa-1)}-1\right].
+\]
+\item $0.3048$, $1852$, $3600$: metres per foot, metres per nautical
+mile and seconds per hour. The pressure conversion uses
+$0.09290304$ m$^2$/ft$^2$ and $4.4482216152605$ N/lbf.
+\end{itemize}
+
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $h,V_{CAS}$ are obtained from the altitude and CAS columns in
+\path{B/User/Briefings/briefing.txt}. In
+\path{lib/fuel_brief.py:_altitude}, an altitude suffix \texttt{M} means
+thousands of feet; AGL suffix \texttt{A} is rejected. Airport altitude
+instead comes from the negative of the third coordinate in
+\texttt{[STPT]} entries \texttt{target\_k} of the loaded DTC
+\path{<callsign/save>.ini}. Leg midpoint altitudes and speed selection
+are described in section~\ref{sec:mfob}.
+\item $h=0$, $V_{CAS}=100$ are fixed inputs in \path{lib/liftoff.py}
+for the liftoff reference; they are independent of the departure field.
+\item $T,p,q_c,M,V_{TAS},q$ are computed from these inputs and the fixed
+constants above by \path{lib/route_fuel.py:air_state}.
+No saved weather is used. The helper requires $-500\leq z\leq20000$ m,
+positive CAS, and both local Mach and the sea-level Mach corresponding
+to CAS below 1.
+\end{itemize}
+
+\subsubsection*{Example}
+The 2026-10-12 11:57:32 export of
+\path{B/User/Briefings/briefing.txt}, Weasel7 STPT 3, gives altitude
+\texttt{5.9M} and CAS \texttt{315}. Thus $h=5900$ ft,
+$z=1798.32$ m and $v_c=162.05$ m/s. The formulas give
+\[
+ T=288.15-0.0065(1798.32)=276.46092\ \text{K},\qquad
+ p=81506.13\ \text{Pa},\quad q_c=17017.04\ \text{Pa},
+\]
+\[
+ M=0.527587,\qquad V_{TAS}=341.836\ \text{kt},\qquad
+ q=331.681\ \text{lbf/ft}^2.
+\]
+
+\subsubsection*{Code}
+The arguments \texttt{altitude\_ft} and \texttt{cas\_kt} are $h,V_{CAS}$;
+after conversion, \texttt{altitude} and \texttt{cas} are $z,v_c$.
+The numeric factors $0.2,3.5,5,2/7,0.7$ are the corresponding expressions
+in $\kappa=1.4$. \texttt{\_number} validates finite numeric inputs.
+
+\path{lib/route_fuel.py}, \texttt{air\_state}:
+\begin{lstlisting}[numbers=left,firstnumber=17,numberstyle=\tiny,xleftmargin=2em]
+def air_state(altitude_ft: float, cas_kt: float) -> tuple[float, float, float]:
+    """Return Mach, TAS in knots and dynamic pressure in lbf/ft² (subsonic)."""
+    altitude = _number(altitude_ft, "MSL altitude") * .3048
+    cas = _number(cas_kt, "CAS", positive=True) * 1852 / 3600
+    if not -500 <= altitude <= 20000:
+        raise FuelModelError("MSL altitude range")
+    temperature = 288.15 - .0065 * min(altitude, 11000)
+    pressure = 101325 * (temperature / 288.15) ** (9.80665 / (287.05287 * .0065))
+    if altitude > 11000:
+        pressure *= math.exp(-9.80665 * (altitude - 11000) / (287.05287 * temperature))
+    sea_mach = cas / math.sqrt(1.4 * 287.05287 * 288.15)
+    impact_pressure = 101325 * ((1 + .2 * sea_mach ** 2) ** 3.5 - 1)
+    mach = math.sqrt(5 * ((impact_pressure / pressure + 1) ** (2 / 7) - 1))
+    if sea_mach >= 1 or mach >= 1:
+        raise FuelModelError("Subsonic CAS range")
+    tas = mach * math.sqrt(1.4 * 287.05287 * temperature) * 3600 / 1852
+    q = .7 * pressure * mach ** 2 * .09290304 / 4.4482216152605
+    return mach, tas, q
+\end{lstlisting}
+
+\subsection{Aircraft table interpolation}\label{subsec:table-interpolation}
+\subsubsection*{Value}
+An aircraft-table value at a requested pair of coordinates, after applying
+the table's multiplier. The same helper supplies lift, drag, correction,
+thrust and fuel-flow values to the performance models.
+
+\subsubsection*{Formula}
+\[
+ A(x,y)=(1-u)(1-v)A_{00}+u(1-v)A_{10}
+                    +(1-u)vA_{01}+uvA_{11}.
+\]
+
+\subsubsection*{Variables}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item $A(x,y)$: interpolated value, in the table's units; for base lift,
+$A=C_L$ is the dimensionless lift coefficient.
+\item $x,y$: query coordinates, such as Mach $M$ and angle of attack
+$\alpha$ in degrees for lift, or altitude in feet and Mach for engine tables.
+\item $x_0,x_1,y_0,y_1$: adjacent axis breakpoints enclosing the query;
+queries outside the available axes are rejected.
+\item $u=(x-x_0)/(x_1-x_0)$, $v=(y-y_0)/(y_1-y_0)$: interpolation
+fractions within the two intervals.
+\item $A_{ij}=\mu a_{ij}$: scaled corner values. Here $a_{ij}$ are raw
+table entries, $\mu$ is the multiplier (taken from BMS data; 1 if absent), and
+$i,j\in\{0,1\}$ select the lower/upper corner on each axis.
+\end{itemize}
+
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $a_{ij},\mu$ are taken from a table's \path{data.values} rows and
+\texttt{multiplier} in the active aircraft's \path{Sim/Acdata/*.txtpb}.
+\path{lib/cam/opencam/aircraft_data.py:_table} parses them;
+\path{lib/fuel.py:_Table.read} applies the multiplier once.
+\item $x_0,x_1,y_0,y_1$ are selected from
+\path{x_axis.breakpoints}/\path{y_axis.breakpoints} in that table.
+If an axis is absent, the caller supplies fallback breakpoints from
+the same aircraft file: for example, \path{aero_new2.mach_bp.breakpoints}
+and \path{aero_new2.alpha_bp.breakpoints} for base lift/drag.
+The selections for other tables are listed below and in
+section~\ref{sec:takeoff}.
+\item $x,y$ are query arguments computed from the flight state in
+\path{lib/route_fuel.py} or \path{lib/liftoff.py}.
+\path{lib/fuel.py:_bracket} computes the enclosing intervals and
+$u,v$; \texttt{\_Table.at} in that file computes $A(x,y)$.
+\end{itemize}
+
+\subsubsection*{Example}
+In \path{I/Sim/Acdata/F-16C-40 IAF.txtpb},
+\path{aero_new2.clift_table} has multiplier 1. Between Mach
+$0.5,0.6$ and angles $5^\circ,6^\circ$, its corner values are
+\[
+ (A_{00},A_{10},A_{01},A_{11})=(0.364,0.379,0.441,0.453).
+\]
+For a chosen query $M=0.55$, $\alpha=5.5^\circ$, $u=v=0.5$:
+\[
+ C_L(0.55,5.5)=\tfrac14(0.364+0.379+0.441+0.453)=0.40925.
+\]
+
+\subsubsection*{Code}
+\texttt{\_bracket} returns an axis interval index and its interpolation
+fraction, using the final interval at the upper endpoint.
+In \texttt{read}, \texttt{table} holds the parsed raw rows and multiplier;
+\texttt{x,y} are fallback axes. In \texttt{at}, they are query coordinates,
+and \texttt{fx,fy} are $u,v$; \texttt{a,b} interpolate along each row.
+The helpers \texttt{\_axis} and \texttt{\_number} validate the inputs.
+
+\path{lib/fuel.py}, \texttt{\_bracket}:
+\begin{lstlisting}[numbers=left,firstnumber=51,numberstyle=\tiny,xleftmargin=2em]
+def _bracket(axis: tuple[float, ...], value: float) -> tuple[int, float]:
+    if not axis[0] <= value <= axis[-1]:
+        raise FuelModelError("Aircraft table range")
+    index = min(max(bisect_right(axis, value) - 1, 0), len(axis) - 2)
+    return index, (value - axis[index]) / (axis[index + 1] - axis[index])
+\end{lstlisting}
+
+\path{lib/fuel.py}, \texttt{\_Table.read/at}:
+\begin{lstlisting}[numbers=left,firstnumber=65,numberstyle=\tiny,xleftmargin=2em]
+def read(cls, table: AircraftTable | None, x=None, y=None) -> "_Table":
+    if table is None:
+        raise FuelModelError("Required aircraft performance table is missing.")
+    xs = _axis(table.x_breakpoints if table.x_breakpoints is not None else x, "x")
+    ys = _axis(table.y_breakpoints if table.y_breakpoints is not None else y, "y")
+    if len(table.rows) != len(xs) or any(len(row) != len(ys) for row in table.rows):
+        raise FuelModelError("Aircraft table dimensions do not match its breakpoints.")
+\end{lstlisting}
+\begin{lstlisting}[numbers=left,firstnumber=73,numberstyle=\tiny,xleftmargin=2em]
+    scale = 1.0 if table.multiplier is None else _number(table.multiplier, "table multiplier", positive=True)
+    rows = tuple(tuple(_number(v, "table value") * scale for v in row) for row in table.rows)
+    return cls(xs, ys, rows)
+
+def at(self, x: float, y: float) -> float:
+    i, fx = _bracket(self.x, x)
+    j, fy = _bracket(self.y, y)
+    a = self.rows[i][j] * (1 - fy) + self.rows[i][j + 1] * fy
+    b = self.rows[i + 1][j] * (1 - fy) + self.rows[i + 1][j + 1] * fy
+    return a * (1 - fx) + b * fx
+\end{lstlisting}
+
+\subsection{Aerodynamic drag and fuel flow}\label{subsec:route-flow}
+\subsubsection*{Values}
+Angle of attack, aerodynamic drag and required thrust at the current
+weight and planned flight state. The model returns whole-aircraft fuel
+flow and horizontal airspeed for the MFOB integration in
+section~\ref{sec:mfob}.
+
+\subsubsection*{Formulas}
+Lift and drag use the coefficient definitions and steady straight-flight
+force balance in \cite[pp.~1--1, 1--4 and 1--5]{how2004}.
+Thrust is treated as parallel to the flight path. The engine-table
+scaling and fuel-flow interpolation are app approximations.
+\begin{align*}
+ \alpha&=\alpha_i+
+ \frac{C_L^*-C_{L,i}}{C_{L,i+1}-C_{L,i}}(\alpha_{i+1}-\alpha_i),\\
+ D&=qS\,[C_D(M,\alpha)P_D(0,\alpha)+\Delta C_D],&
+ T_{req}&=D+W\sin\gamma,\\
+ Q&=Q_a+\max\!\left(0,\frac{T_{req}-T_a}{T_b-T_a}\right)(Q_b-Q_a),&
+ V_h&=V_{TAS}\cos\gamma.
+\end{align*}
+
+\subsubsection*{Variables}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item $h,M,q,V_{TAS}$: MSL altitude in feet, Mach number, dynamic
+pressure in lbf/ft$^2$ and TAS in knots from
+section~\ref{subsec:atmosphere}. Engine tables use $h$, not its metre
+equivalent $z$.
+\item $W,S$: current gross weight treated as weight in lbf, and the
+aircraft's wing area in ft$^2$.
+\item $s=\Delta h/\Delta d$, $\gamma=\arctan s$: leg gradient and
+flight-path angle in radians; $\Delta h,\Delta d$ are the altitude
+change and horizontal distance, both in feet.
+\item $C_L^*=W\cos\gamma/(qS)$: lift coefficient required for force
+balance normal to the flight path.
+\item $C_L,C_D,P_L,P_D$: dimensionless base lift/drag coefficients and
+their sideslip correction multipliers. Corrections use zero sideslip
+and default to 1 when their table is absent.
+\item $\alpha,\alpha_i$: computed angle of attack and sampled angles,
+in degrees. Samples include the base lift-table breakpoints and
+endpoints of its common range with the drag table, restricted to
+$[-5^\circ,15^\circ]$.
+\item $C_{L,i}=C_L(M,\alpha_i)P_L(0,\alpha_i)$: corrected sampled lift.
+The samples must increase strictly; $i$ selects the interval enclosing
+$C_L^*$, with $C_{L,i}\leq C_L^*\leq C_{L,i+1}$.
+\item $DI,\Delta C_D$: takeoff displayed drag factor from
+section~\ref{subsec:drag} and the added stores drag coefficient,
+$\Delta C_D=(DI-1)k(M)$. The subtraction removes the clean-display baseline.
+\item $k(M)$: coefficient increment per drag-index unit,
+\[
+ k(M)=k_0+\clip\!\left(\frac{M-M_0}{M_1-M_0},0,1\right)(k_1-k_0).
+\]
+$M_0,M_1,k_0,k_1$ are the Mach endpoints and their coefficients
+(taken from BMS data);
+$\clip$ clamps the fraction to $[0,1]$. A constant limiter has $k_0=k_1$.
+\item $N_e,f_T,f_Q$: engine count and dimensionless thrust
+and fuel-flow scale factors, fixed for the aircraft.
+\item $A_T(h,\alpha)$: advanced thrust correction multiplier,
+used when enabled; otherwise 1.
+\item $r\in\{idle,MIL,AB\}$: engine regime.
+$T_{table,r}(h,M),Q_{table,r}(h,M)$ are per-engine table values in lbf
+and lb/h. Whole-aircraft regime values are
+\[
+ T_r=N_e f_T A_T(h,\alpha)T_{table,r}(h,M),\qquad
+ Q_r=N_e f_Q Q_{table,r}(h,M).
+\]
+\item $a,b$: lower and upper interpolation regimes: idle/MIL when
+$T_{req}\leq T_{MIL}$, otherwise MIL/AB. Below idle the model uses idle
+flow; missing required AB data or thrust above AB makes it unavailable.
+\item $D,T_{req}$: computed drag and required combined thrust, in lbf.
+$Q,V_h$ are the returned combined fuel flow in lb/h and horizontal
+airspeed in knots.
+\end{itemize}
+
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $h,M,q,V_{TAS}$ come from section~\ref{subsec:atmosphere}.
+$s$ is computed from planned altitude changes and horizontal distances
+in \path{lib/route_fuel.py:remaining_route_fuel}; the distances use the
+first two coordinates of DTC \texttt{[STPT]} \texttt{target\_k} entries
+in \path{<callsign/save>.ini}.
+\item $W$ is computed from the selected CAM member's takeoff gross
+weight and fuel, as described in section~\ref{subsec:gross-weight},
+then adjusted for the current required fuel during the backward
+integration in section~\ref{sec:mfob}. $DI$ stays at the saved takeoff
+value from section~\ref{subsec:drag}.
+\item $S$ is read from \path{airframe.area_sqft} in the aircraft's
+\path{Sim/Acdata/*.txtpb}. $C_L,C_D$ are interpolated from
+\path{aero_new2.clift_table} and \path{aero_new2.cdrag_table}, using
+\texttt{mach\_bp}/\texttt{alpha\_bp} as fallback axes.
+$P_L,P_D$ use \path{aero_new2.perc_lift_table} and
+\path{aero_new2.perc_drag_table}, with
+\texttt{beta\_perc\_bp}/\texttt{alpha\_bp} fallback axes.
+All tables follow section~\ref{subsec:table-interpolation}.
+\item $M_0,k_0,M_1,k_1$ are taken, in that order, from
+\path{limits.limit.data.values} where \texttt{key=LIM\_STORES\_DRAG}
+and \texttt{type=LIMITER\_LINE} in the same aircraft \texttt{.txtpb}.
+For \texttt{LIMITER\_VALUE}, its single coefficient is used at both
+endpoints. \path{lib/route_fuel.py:RoutePerformance.stores_cd} computes $\Delta C_D$.
+\item $N_e,f_T,f_Q$ are read from \path{auxaero.engine.n_engines},
+\path{engine.thrust_factor} and \path{engine.fuel_flow_factor}
+in that file. $T_{table,r},Q_{table,r}$ use its
+\path{engine.alt_mach_thrust_*_table} and
+\path{engine.alt_mach_fuel_flow_*_table}, with \texttt{*} replaced by
+\texttt{idle}, \texttt{mil} or \texttt{ab}. Missing axes inherit the
+altitude/Mach axes from \path{engine.alt_mach_thrust_idle_table}.
+\item $A_T$ is interpolated from
+\path{engine.alt_alpha_thrust_factor_table} only when
+\path{engine.has_advanced_thrust} is true in that \texttt{.txtpb};
+its altitude axis falls back to the idle table's, and its angle axis
+must be supplied by the table.
+\item $\alpha,D,T_{req},Q,V_h$ are computed from these inputs in
+\path{lib/route_fuel.py:RoutePerformance.flow}.
+\texttt{from\_simulation} in that class requires
+\texttt{fmtype=FM\_AFM} and \path{engine.has_fuel_flow} true in the
+aircraft file. Out-of-range queries or invalid lift/engine ranges
+make the route calculation unavailable.
+\end{itemize}
+
+\subsubsection*{Example}
+Weasel7, flight 4/member 0 in \path{I/Campaign/weight_tests.cam}, has
+takeoff weight 42689 lb and $DI=200$. Use that weight for this
+illustrative level-flight sample ($s=\gamma=0$), with the STPT 3
+atmosphere from section~\ref{subsec:atmosphere}.
+\path{I/Sim/Acdata/F-16C-40 IAF.txtpb} gives $S=300$ ft$^2$ and
+the limiter values $(0.9,0.0001,1.0,0.000283)$.
+Since $M=0.527587<0.9$, $k(M)=0.0001$ and
+$\Delta C_D=(200-1)(0.0001)=0.0199$.
+The required lift and enclosing corrected table samples give
+\[
+ C_L^*=\frac{42689}{331.68072(300)}\simeq0.429017,\qquad
+ \alpha=5+\frac{0.429017-0.3681381}{0.4443105-0.3681381}(6-5)
+       \simeq5.7992^\circ.
+\]
+Here $P_L=P_D=A_T=1$; the drag table gives $C_D=0.04108642$, hence
+\[
+ D=T_{req}=331.68072(300)(0.04108642+0.0199)
+          \simeq6068.406\ \text{lbf}.
+\]
+The aircraft has $N_e=f_T=f_Q=1$. Its scaled idle/MIL table values are
+$(T_{idle},Q_{idle})=(-443.464,713.09)$ and
+$(T_{MIL},Q_{MIL})=(13649.320,11741.231)$:
+\[
+ Q=713.09+\frac{6068.406+443.464}{13649.320+443.464}
+       (11741.231-713.09)\simeq5808.88\ \text{lb/h},\qquad
+ V_h=341.836\ \text{kt}.
+\]
+The actual MFOB integration reevaluates this model as required fuel
+and therefore $W$ change.
+
+\subsubsection*{Code}
+In \texttt{from\_simulation}, \texttt{sim} is the parsed aircraft data
+and \texttt{engines} is $N_e$. The returned object stores the wing
+area, $N_ef_T$, $N_ef_Q$, interpolation tables and stores limiter.
+
+\path{lib/route_fuel.py}, \texttt{RoutePerformance.from\_simulation}:
+\begin{lstlisting}[numbers=left,firstnumber=80,numberstyle=\tiny,xleftmargin=2em]
+return cls(
+    _number(sim.airframe.wing_area_sqft, "wing area", positive=True),
+    engines * _number(sim.engine.parameters.get("thrust_factor"), "thrust factor", positive=True),
+    engines * _number(sim.engine.parameters.get("fuel_flow_factor"), "fuel-flow factor", positive=True),
+    tables, values,
+)
+\end{lstlisting}
+
+In \texttt{stores\_cd}, \texttt{index} is $DI-1$ and the limiter tuple
+is $(M_0,k_0,M_1,k_1)$.
+In \texttt{flow}, the inputs are altitude in feet, CAS in knots,
+current weight, takeoff DI and leg gradient. \texttt{q\_area} is $qS$;
+\texttt{alphas,lifts} hold $\alpha_i,C_{L,i}$.
+The \texttt{\_bracket} call in \texttt{flow} locates the required lift
+between samples. The local \texttt{engine} helper evaluates and scales a
+regime table; \texttt{t0,t1,f0,f1} are $T_a,T_b,Q_a,Q_b$.
+The returned pair is $(Q,V_h)$.
+
+\path{lib/route_fuel.py}, \texttt{RoutePerformance.stores\_cd}:
+\begin{lstlisting}[numbers=left,firstnumber=106,numberstyle=\tiny,xleftmargin=2em]
+def stores_cd(self, mach: float, drag_index: float) -> float:
+    index = _number(drag_index, "T/O drag factor") - 1
+    if index < 0:
+        raise FuelModelError("T/O drag factor")
+    x0, y0, x1, y1 = self.stores_drag
+    fraction = max(0., min(1., (mach - x0) / (x1 - x0)))
+    return index * (y0 + fraction * (y1 - y0))
+\end{lstlisting}
+
+\path{lib/route_fuel.py}, \texttt{RoutePerformance.flow}:
+\begin{lstlisting}[numbers=left,firstnumber=121,numberstyle=\tiny,xleftmargin=2em]
+mach, tas, q = air_state(altitude_ft, cas_kt)
+weight = _number(weight_lb, "gross weight", positive=True)
+gamma = math.atan(gradient)
+q_area = q * self.wing_area
+cl, cd = self.tables["cl"], self.tables["cd"]
+low, high = max(-5., cl.y[0], cd.y[0]), min(15., cl.y[-1], cd.y[-1])
+alphas = sorted({low, high, *(a for a in cl.y if low < a < high)})
+
+def correction(name, alpha):
+    table = self.tables.get(name)
+    return table.at(0, alpha) if table else 1.
+
+lifts = tuple(cl.at(mach, a) * correction("perc_lift_table", a) for a in alphas)
+if any(a >= b for a, b in zip(lifts, lifts[1:])):
+    raise FuelModelError("Cruise lift range")
+i, f = _bracket(lifts, weight * math.cos(gamma) / q_area)
+alpha = alphas[i] + f * (alphas[i + 1] - alphas[i])
+drag = (cd.at(mach, alpha) * correction("perc_drag_table", alpha)
+        + self.stores_cd(mach, drag_index)) * q_area
+required_thrust = drag + weight * math.sin(gamma)
+factor = self.tables.get("alpha_thrust")
+thrust_scale = self.thrust_scale * (factor.at(altitude_ft, alpha) if factor else 1.)
+
+def engine(quantity, regime, scale):
+    return self.tables[f"{quantity}_{regime}"].at(altitude_ft, mach) * scale
+
+t0, t1 = (engine("thrust", r, thrust_scale) for r in ("idle", "mil"))
+f0, f1 = (engine("fuel_flow", r, self.flow_scale) for r in ("idle", "mil"))
+if t1 <= t0 or f0 <= 0 or f1 < f0:
+    raise FuelModelError("Idle/MIL performance")
+if required_thrust > t1:
+    if not {"thrust_ab", "fuel_flow_ab"} <= self.tables.keys():
+        raise FuelModelError("Afterburner performance")
+    t0, f0 = t1, f1
+    t1, f1 = engine("thrust", "ab", thrust_scale), engine("fuel_flow", "ab", self.flow_scale)
+    if t1 <= t0 or f1 < f0 or required_thrust > t1:
+        raise FuelModelError("Required thrust exceeds full AB")
+fraction = max(0., (required_thrust - t0) / (t1 - t0))
+return f0 + fraction * (f1 - f0), tas * math.cos(gamma)
+\end{lstlisting}
+
+
+\section{Liftoff speed (experimental)}\label{sec:takeoff}
+\subsubsection*{Value}
+The selected pilot's estimated liftoff speed, displayed as \texttt{L/O SPD}
+in Admin, rounded to a whole knot. The tooltip specifies KCAS.
+Unavailable values show a dash.
+
+\subsubsection*{Formula}
+The model assumes sea-level ISA, full afterburner, takeoff flaps and
+horizontal airflow. The aircraft's takeoff pitch is treated as
+angle of attack, with thrust along the body axis. Liftoff occurs when
+lift plus vertical thrust supports takeoff gross weight:
+\[
+ C_{L,TO}(M,\alpha)=C_L(M,\alpha)P_L(0,\alpha)
+   +C_{L,TEF}(M,\alpha)\frac{\delta_{TO}}{\delta_{max}},\]
+\[ q(M_{LO})S C_{L,TO}(M_{LO},\alpha)
+   +T(M_{LO})\sin\alpha=W_{TO},\]
+\[V_{LO}=\frac{V_{ref}}{M_{ref}}M_{LO}.\]
+The app finds the root by 60 bisection iterations over the Mach range
+corresponding to 70--330 KCAS, after checking that support increases
+strictly throughout that range.
+
+\subsubsection*{Variables}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item $V_{LO},M_{LO}$: computed liftoff speed in KCAS and its Mach number;
+$M$ is a candidate Mach number.
+\item $W_{TO},S$: takeoff gross weight from section~\ref{subsec:gross-weight}, treated as
+weight in lbf, and the aircraft's wing area in ft$^2$.
+\item $\alpha$: takeoff pitch in degrees (taken from BMS data), used as a
+fixed angle of attack; the app requires $0<\alpha<30^\circ$.
+\item $C_{L,TO},C_L,C_{L,TEF},P_L$: computed takeoff lift coefficient,
+base lift coefficient, full trailing-edge-flap lift increment and
+sideslip lift multiplier, respectively. All are dimensionless;
+$P_L(0,\alpha)$ uses zero sideslip.
+\item $\delta_{TO},\delta_{max}$: takeoff and maximum
+trailing-edge-flap deflections in degrees. Their ratio is the applied
+flap fraction, required to lie in $[0,1]$, with $\delta_{max}>0$.
+\item $T(M)=N_e f_T T_{AB}(0,M)$: combined engine thrust in lbf.
+$N_e,f_T$ are the engine count and thrust scale factor;
+$T_{AB}$ is the per-engine full-afterburner thrust table, evaluated at
+zero altitude in feet.
+\item $V_{ref}=100$ KCAS: fixed reference speed chosen in the code;
+$M_{ref},q_{ref}$ are its sea-level ISA Mach number and dynamic pressure,
+computed using the atmosphere formulas in section~\ref{sec:flow}:
+$M_{ref}\simeq0.15117647$, $q_{ref}\simeq33.85529$ lbf/ft$^2$.
+\item $q(M)=q_{ref}(M/M_{ref})^2$: dynamic pressure in lbf/ft$^2$.
+The reference scaling applies at the fixed sea-level ISA conditions.
+\end{itemize}
+
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $W_{TO}$ is computed from the saved member's fuel and loadout in
+\path{<save>.cam} and the aircraft/store weights, using the files and
+fields listed in section~\ref{subsec:gross-weight}. \path{lib/cam/loadout_data.py} passes
+\texttt{gross\_weight\_lb} to the liftoff model.
+\item $S,\alpha$ are read from \path{airframe.area_sqft} and
+\path{auxaero.ai_behavior.opt_takeoff_pitch}, respectively, in the
+aircraft's \path{Sim/Acdata/*.txtpb}. The parser
+\path{lib/cam/opencam/aircraft_data.py} exposes them as
+\texttt{wing\_area\_sqft} and \texttt{takeoff\_pitch\_deg}.
+\item $\delta_{TO},\delta_{max}$ are read from
+\path{auxaero.tef.tef_take_off} and \path{auxaero.tef.tef_max_angle},
+respectively, in the same aircraft \texttt{.txtpb}.
+\item $C_L,C_{L,TEF},P_L$ are interpolated from
+\path{aero_new2.clift_table}, \path{aero_new2.c_lift_tef_table} and
+\path{aero_new2.perc_lift_table}, respectively, in that \texttt{.txtpb}.
+Their fallback axes within \texttt{aero\_new2} are
+\texttt{mach\_bp}/\texttt{alpha\_bp},
+\texttt{mach\_tef\_bp}/\texttt{alpha\_tef\_bp}, and
+\texttt{beta\_perc\_bp}/\texttt{alpha\_bp}.
+\path{lib/fuel.py:_Table} reads \path{data.values}, applies each table's
+\texttt{multiplier} (1 if absent), and interpolates bilinearly; explicit
+\path{x_axis.breakpoints}/\path{y_axis.breakpoints} take precedence.
+\item $N_e,f_T$ are read from \path{auxaero.engine.n_engines} and
+\path{engine.thrust_factor} in the aircraft \texttt{.txtpb}.
+$T_{AB}$ is interpolated from \path{engine.alt_mach_thrust_ab_table},
+using the same table rules. Missing altitude/Mach axes are taken from
+\path{engine.alt_mach_thrust_idle_table} in that file.
+\item $M_{ref},q_{ref}$ are computed by
+\path{lib/route_fuel.py:air_state} at 0 ft and 100 KCAS, using fixed ISA
+constants rather than saved weather or airfield elevation.
+\path{lib/liftoff.py:LiftoffPerformance} computes $C_{L,TO}$, $T$ and
+$V_{LO}$ from the preceding data. It requires \texttt{fmtype=FM\_AFM}
+in the aircraft file, valid table coverage, increasing support and a
+root within 70--330 KCAS. \path{lib/admin_brief.py} rounds the result.
+\end{itemize}
+Stores and CFTs enter through gross weight; DRAG is not an input.
+The estimate omits ground effect, trim/CG, rotation dynamics, separate
+store/CFT lift increments and advanced thrust corrections.
+
+\subsubsection*{Example}
+Falcon2-1 in \path{I/Campaign/weight_tests.cam} has
+$W_{TO}=42256$ lb (section~\ref{subsec:gross-weight}).
+Its \path{I/Sim/Acdata/F-16I-52+ IAF.txtpb} gives $S=300$ ft$^2$,
+$\alpha=12^\circ$, $\delta_{TO}=\delta_{max}=21.5^\circ$, $N_e=1$ and
+$f_T=1$. At the computed root $M_{LO}\simeq0.28798432$, the tables give
+\[
+ C_{L,TO}=0.8730039(1)+0.1239225(1)\simeq0.9969264.
+\]
+With $q\simeq122.85585$ lbf/ft$^2$ and $T\simeq26513.7865$ lbf,
+\[
+ 122.85585(300)(0.9969264)+26513.7865\sin12^\circ
+ \simeq42256\ \text{lbf}.
+\]
+Thus $V_{LO}=190.49546$ KCAS; Admin displays \texttt{190}.
+
+For comparison, \path{B/Data/Sim/Acdata/F-15C.txtpb} gives $S=608$ ft$^2$,
+$\alpha=10^\circ$, $\delta_{TO}=\delta_{max}=45^\circ$, $N_e=2$ and
+$f_T=1$. With an illustrative $W_{TO}=50000$ lb, the model finds
+$C_{L,TO}=0.7757$, $T=40982$ lbf and $V_{LO}=163.88281$ KCAS,
+displayed as \texttt{164}. These are model estimates, not measured
+liftoff speeds in BMS.
+
+\subsubsection*{Code}
+In \texttt{from\_simulation}, \texttt{sim} holds the parsed aircraft data;
+\texttt{cl}, \texttt{flap} and \texttt{correction} are the three lift
+tables, and \texttt{thrust} is the AB table.
+\texttt{\_Table} implements the interpolation described above;
+\texttt{\_number} validates numeric inputs.
+The \texttt{mach} nodes combine the lift, flap and thrust Mach breakpoints
+with the search limits. At each node, \texttt{lift} stores $C_{L,TO}$ and
+\texttt{vertical} stores $T\sin\alpha$.
+The resulting object stores $q_{ref}S/M_{ref}^2$ as
+\texttt{q\_area\_per\_mach2}.
+
+\path{lib/liftoff.py}, reference atmosphere:
+\begin{lstlisting}[numbers=left,firstnumber=16,numberstyle=\tiny,xleftmargin=2em]
+_REFERENCE_MACH, _, _REFERENCE_Q = air_state(0, 100)
+_KCAS_PER_MACH = 100 / _REFERENCE_MACH
+\end{lstlisting}
+
+\path{lib/liftoff.py}, \texttt{LiftoffPerformance.from\_simulation}:
+\begin{lstlisting}[numbers=left,firstnumber=31,numberstyle=\tiny,xleftmargin=2em]
+area = _number(sim.airframe.wing_area_sqft, "wing area", positive=True)
+alpha = _number(sim.takeoff_pitch_deg, "takeoff pitch", positive=True)
+if alpha >= 30:
+    raise ValueError("Takeoff pitch range")
+tef = sim.flaps.get("tef", {})
+flap_fraction = (_number(tef.get("tef_take_off"), "takeoff TEF")
+                 / _number(tef.get("tef_max_angle"), "maximum TEF", positive=True))
+if not 0 <= flap_fraction <= 1:
+    raise ValueError("Takeoff TEF range")
+aero = sim.aerodynamics.get("aero_new2")
+if aero is None:
+    raise ValueError("Liftoff lift tables required")
+cl = _Table.read(aero.tables.get("clift_table"),
+                 aero.breakpoints.get("mach_bp"), aero.breakpoints.get("alpha_bp"))
+flap = _Table.read(aero.tables.get("c_lift_tef_table"),
+                   aero.breakpoints.get("mach_tef_bp"), aero.breakpoints.get("alpha_tef_bp"))
+correction = _Table.read(aero.tables.get("perc_lift_table"),
+                         aero.breakpoints.get("beta_perc_bp"), aero.breakpoints.get("alpha_bp"))
+lift_factor = correction.at(0, alpha)
+idle = _Table.read(sim.engine.tables.get("alt_mach_thrust_idle_table"))
+thrust = _Table.read(sim.engine.tables.get("alt_mach_thrust_ab_table"), idle.x, idle.y)
+scale = (_number(sim.engine.number_of_engines, "engine count", positive=True)
+         * _number(sim.engine.parameters.get("thrust_factor"), "thrust factor", positive=True)
+         * math.sin(math.radians(alpha)))
+low, high = (v / _KCAS_PER_MACH for v in (70., 330.))
+mach = tuple(sorted({low, high, *(m for m in (*cl.x, *flap.x, *thrust.y) if low < m < high)}))
+lift = tuple(_number(cl.at(m, alpha) * lift_factor + flap.at(m, alpha) * flap_fraction,
+                     "takeoff lift coefficient", positive=True) for m in mach)
+vertical = tuple(_number(thrust.at(0, m) * scale, "vertical AB thrust", positive=True) for m in mach)
+result = cls(_REFERENCE_Q / _REFERENCE_MACH ** 2 * area, mach, lift, vertical)
+\end{lstlisting}
+
+The omitted validation checks that the derivative of support is positive
+on every Mach interval. In \texttt{support}, \texttt{\_bracket} returns
+the interval index and interpolation fraction; \texttt{thrust} there is
+already the vertical component. The returned force is compared with
+$W_{TO}$ in \texttt{speed\_kcas}, which converts the final Mach to KCAS.
+
+\path{lib/liftoff.py}, \texttt{LiftoffPerformance.support/speed\_kcas}:
+\begin{lstlisting}[numbers=left,firstnumber=78,numberstyle=\tiny,xleftmargin=2em]
+def support(self, mach: float) -> float:
+    i, fraction = _bracket(self.mach, mach)
+    cl = self.lift[i] + fraction * (self.lift[i + 1] - self.lift[i])
+    thrust = self.vertical_thrust[i] + fraction * (self.vertical_thrust[i + 1] - self.vertical_thrust[i])
+    return self.q_area_per_mach2 * mach ** 2 * cl + thrust
+
+def speed_kcas(self, gross_weight_lb: float) -> float:
+    weight = _number(gross_weight_lb, "takeoff gross weight", positive=True)
+    low, high = self.mach[0], self.mach[-1]
+    if not self.support(low) <= weight <= self.support(high):
+        raise ValueError("Liftoff speed outside 70-330 KCAS")
+    for _ in range(60):
+        middle = (low + high) / 2
+        if self.support(middle) < weight:
+            low = middle
+        else:
+            high = middle
+    return (low + high) / 2 * _KCAS_PER_MACH
+\end{lstlisting}
+
+
+\section{Minimal fuel on board }\label{sec:mfob}
+Minimal fuel on board (MFOB) is displayed in the flightplan. It is the minimal amount of fuel required to fly the rest of the flight plan from the current steerpoint + 500 lb. 
+\subsubsection*{Value}
+The selected pilot's required fuel on arrival at each steerpoint,
+displayed as \texttt{MFOB} in the flightplan, in lb rounded up to the
+next 100 lb. It includes any explicitly timed hold at that point.
+Unavailable values and rows beyond the first planned landing show a dash.
+
+\subsubsection*{Formulas}
+Start with $F=F_{land}$ at the first planned landing and work backward.
+At each steerpoint, add its hold requirement before recording $F_i$,
+then integrate the preceding leg. Each step adds fuel using a midpoint
+estimate of fuel weight:
+\begin{align*}
+ Q_1&=Q(h,V_{CAS},W_{dry}+F,DI,s),\\
+ Q_2&=Q(h,V_{CAS},W_{dry}+F+Q_1\Delta t/2,DI,s),\\
+ F_{new}&=F+Q_2\Delta t,\\
+ \mathrm{MFOB}_i&=100\left\lceil\rnd(F_i/100,9)\right\rceil.
+\end{align*}
+Continue with the unrounded $F_{new}$. The landing reserve is included
+once; the upward rounding is applied only to displayed cells.
+
+\subsubsection*{Variables}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item $i,L$: route-point index and first landing index, with
+$i=1,\ldots,L$. For $i\geq2$, leg $i$ is flown from $i-1$ to $i$.
+\item $F_i,\mathrm{MFOB}_i$: unrounded and displayed required fuel at
+arrival at point $i$, in lb, including its hold and the landing reserve.
+\item $F,F_{new}$: fuel requirement before and after one backward
+integration step, in lb. Adding a step moves the estimate earlier
+along the flight.
+\item $F_{land}=500$ lb: fixed landing reserve.
+The 100 lb display increment and nine decimal places in $\rnd$ are
+fixed app settings. $\rnd(x,9)$ rounds $x$ to nine decimal places
+before the ceiling $\lceil\cdot\rceil$, suppressing floating-point noise.
+\item $W_{TO},F_{TO}$: the saved member's takeoff gross weight and fuel
+from sections~\ref{subsec:gross-weight} and~\ref{subsec:takeoff-fuel}.
+$W_{dry}=W_{TO}-F_{TO}$ is its fixed non-fuel weight, including retained
+stores, tanks and CFT dry mass. All weights are in lb.
+\item $DI$: fixed takeoff drag factor from section~\ref{subsec:drag}.
+\item $N_i,E_i,Z_i$: DTC coordinates in feet; $N_i,E_i$ are north/east,
+and $-Z_i$ supplies airport elevation. $h_i,V_{CAS,i}$ are the planned
+MSL altitude in feet and CAS in knots assigned to point $i$.
+\item $d_i$: horizontal leg length in NM, with
+$c_{ft}=1852/0.3048$ feet per NM:
+\[
+ d_i=\frac{\sqrt{(N_i-N_{i-1})^2+(E_i-E_{i-1})^2}}{c_{ft}}.
+\]
+\item $n_i=\max(1,\lceil d_i/2\rceil)$: leg step count, giving
+$\Delta d=d_i/n_i\leq2$ NM. $j=0,\ldots,n_i-1$ counts steps backward
+from destination $i$.
+\item $h,V_{CAS},s$: altitude in feet, CAS in knots and forward
+flight-path gradient used for a leg step:
+\[
+ h=h_{i-1}+\left(1-\frac{j+1/2}{n_i}\right)(h_i-h_{i-1}),\qquad
+ V_{CAS}=V_{CAS,i},\qquad
+ s=\frac{h_i-h_{i-1}}{c_{ft}d_i}.
+\]
+Thus both flow evaluations use the same spatial midpoint. The gradient
+retains the forward climb/descent sign during backward integration.
+\item $Q(\cdot),Q_1,Q_2$: whole-aircraft fuel-flow model from
+section~\ref{subsec:route-flow}, and its first and midpoint-weight
+evaluations, in lb/h. $V_h$ is the horizontal airspeed in knots
+returned with $Q_1$; a leg step uses $\Delta t=\Delta d/V_h$ hours.
+\item $t_{arrival,i},t_{departure,i}$: arrival/departure clock times
+in seconds after midnight. The hold duration in hours is
+\[
+ H_i=\frac{(t_{departure,i}-t_{arrival,i})\bmod86400}{3600}.
+\]
+The modulo allows a hold to cross midnight. Points without a timed
+hold, including takeoff and landing, have $H_i=0$.
+\item $n_{H,i}=\max(1,\lceil120H_i\rceil)$: step count for a nonzero
+hold, giving $\Delta t=H_i/n_{H,i}\leq1/120$ h (30 s).
+Hold steps use $h=h_i$, $V_{CAS}=V_{CAS,i}$ and $s=0$ in the same
+fuel-weight update.
+\end{itemize}
+
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $W_{TO},F_{TO},DI$ come from the matched aircraft member in
+\path{<save>.cam}, using the loadout data and files described in
+section~\ref{sec:loadout}. \path{lib/fuel_brief.py:build_fuel_plan}
+computes $W_{dry}$ from \texttt{gross\_weight\_lb} minus
+\texttt{takeoff\_fuel\_lb}. Matching uses the briefing's package and
+flight/callsign, then the selected pilot's roster position.
+\item $N_i,E_i,Z_i,L$ come from the loaded DTC
+\path{<callsign/save>.ini}, \texttt{[STPT]} entries
+\texttt{target\_k=N,E,Z,action,...}, where $i=k+1$.
+\path{lib/parsers/parse_callsign_ini.py} parses these entries;
+\path{lib/fuel_brief.py:_route_points} stops at the lowest steerpoint
+number with action 7 or 27. All points from 1 through $L$ are required.
+\item $h_i,V_{CAS,i}$ come from the altitude and CAS columns of
+\path{B/User/Briefings/briefing.txt}, parsed by
+\path{lib/parsers/parse_briefing_txt.py}. An altitude suffix
+\texttt{M} means thousands of feet; \texttt{A} (AGL) is unsupported.
+Takeoff and landing use $h_i=-Z_i$ from the DTC instead.
+A leg uses its destination row's CAS; takeoff borrows STPT 2's CAS,
+and an absent landing row borrows the preceding row's.
+\item $H_i$ is computed by \path{lib/fuel_brief.py:_hold_hours}
+from the briefing row's arrival time and \texttt{Departure:} time in
+a hold/departure comment. A patrol/attack label alone adds no time;
+an explicit hold/departure comment with missing or invalid times
+makes the calculation unavailable. Leg duration instead comes from
+DTC distance and model airspeed.
+\item $Q,V_h$ are computed from the flight state, current fuel weight
+and takeoff $DI$ by \path{lib/route_fuel.py:RoutePerformance.flow},
+using the aircraft's \path{Sim/Acdata/*.txtpb} fields described in
+section~\ref{subsec:route-flow}.
+\item $F_{land}$, the display increment and $c_{ft}$ are
+\texttt{ALLOWANCE\_LB}, \texttt{ROUNDING\_LB} and \texttt{FEET\_PER\_NM}
+in \path{lib/fuel.py}. The 2 NM/30 s step limits, nine-place rounding
+and backward updates of $F$ are implemented in
+\path{lib/route_fuel.py:remaining_route_fuel}.
+A zero-length leg at unchanged altitude is skipped; a zero-length
+altitude transition is rejected.
+\item $\mathrm{MFOB}_i$ is attached to each briefing row by
+\path{lib/fuel_brief.py:build_fuel_plan} and formatted with thousands
+separators in \path{templates/flightplan.html}. Invalid route,
+matching or performance data makes the planned values unavailable.
+\end{itemize}
+Store mass and $DI$ stay at takeoff values while fuel weight changes.
+The estimate includes no wind, acceleration, bank penalty, refuelling
+credit or store releases; altitude transitions are linear.
+
+\subsubsection*{Example}
+Use \path{I/Campaign/weight_tests.cam},
+\path{I/Campaign/weight_tests.ini} and the 2026-10-12 11:57:32 export of
+\path{B/User/Briefings/briefing.txt}: Weasel7, flight 4/member 0,
+with \path{I/Sim/Acdata/F-16C-40 IAF.txtpb}.
+The saved member gives
+\[
+ W_{dry}=42689-9202=33487\ \text{lb},\qquad DI=200.
+\]
+The first landing is STPT 10, where $F_{10}=500$ lb.
+Working backward through the later legs reaches STPT 3's departure
+with $F=6331.6719$ lb. Its arrival/departure times,
+07:28:24--07:34:24, give
+\[
+ H_3=\frac{27264-26904}{3600}=0.1\ \text{h},\qquad
+ n_{H,3}=\lceil120(0.1)\rceil=12,\qquad
+ \Delta t=\frac{0.1}{12}=\frac1{120}\ \text{h}.
+\]
+At 5900 ft / 315 KCAS and $s=0$, the first backward hold step gives
+$Q_1=5655.4490$ and $Q_2=5656.7086$ lb/h:
+\[
+ F_{new}=6331.6719+\frac{5656.7086}{120}
+        \simeq6378.8112\ \text{lb}.
+\]
+After all 12 steps, the hold adds 567.0591 lb and
+$F_3=6898.7310$ lb; the displayed MFOB is \texttt{6,900}.
+Continuing backward gives:
+\begin{center}\small
+\begin{tabular}{@{}lrrrrrrrrrr@{}}\hline
+STPT &1&2&3&4&5&6&7&8&9&10\\
+MFOB (lb)&7,400&7,000&6,900&6,200&3,600&3,500&3,100&2,700&600&500\\\hline
+\end{tabular}\end{center}
+STPT 11 is the alternate landing and displays a dash.
+
+\subsubsection*{Code}
+In \texttt{build\_fuel\_plan}, \texttt{member} is the matched saved
+aircraft, \texttt{model} is its \texttt{RoutePerformance} object, and
+\texttt{route} contains the parsed \texttt{RoutePoint} records through
+the first landing. The difference \texttt{gross - takeoff\_fuel} is
+$W_{dry}$.
+
+\path{lib/fuel_brief.py}, \texttt{build\_fuel\_plan}:
+\begin{lstlisting}[numbers=left,firstnumber=189,numberstyle=\tiny,xleftmargin=2em]
+gross = _planned_number(member.get("gross_weight_lb"), "T/O gross weight")
+takeoff_fuel = _planned_number(member.get("takeoff_fuel_lb"), "T/O fuel")
+if takeoff_fuel < 0:
+    raise ValueError("T/O fuel")
+route, landing_number = _route_points(rows, dtc)
+values = remaining_route_fuel(model, route, gross - takeoff_fuel, member.get("drag_index"))
+\end{lstlisting}
+
+In \texttt{\_hold\_hours}, \texttt{row} is a parsed briefing steerpoint.
+\texttt{arrival[1]} and \texttt{departure[1]} are the matched clock
+strings; the local \texttt{seconds} helper converts them to seconds
+after midnight.
+
+\path{lib/fuel_brief.py}, \texttt{\_hold\_hours}:
+\begin{lstlisting}[numbers=left,firstnumber=107,numberstyle=\tiny,xleftmargin=2em]
+def _hold_hours(row: Any) -> float:
+    comment = str(_attr(row, "comment", ""))
+    # Timed patrol/attack repetition can also carry a Departure annotation.
+    # Approximate that dwell at this point's planned speed and altitude.
+    if not re.search(r"\b(?:hold|departure)\b", comment, re.IGNORECASE):
+        return 0.
+    departure = re.search(r"Departure:\s*(\d{2}:\d{2}:\d{2})z?", comment, re.IGNORECASE)
+    arrival = re.fullmatch(r"(\d{2}:\d{2}:\d{2})z?", str(_attr(row, "time", "")).strip(), re.IGNORECASE)
+    if not departure or not arrival:
+        raise ValueError("Hold timing")
+
+    def seconds(text):
+        h, m, s = map(int, text.split(":"))
+        if h > 23 or m > 59 or s > 59:
+            raise ValueError("Hold timing")
+        return h * 3600 + m * 60 + s
+
+    return ((seconds(departure[1]) - seconds(arrival[1])) % 86400) / 3600
+\end{lstlisting}
+
+In \texttt{remaining\_route\_fuel}, \texttt{required} is $F$ and
+\texttt{dry} is $W_{dry}$. \texttt{point} is destination $i$ and
+\texttt{previous} is $i-1$; Python's \texttt{index} is zero-based.
+\texttt{steps}, \texttt{step}, \texttt{ds} and \texttt{dt} correspond to
+$n_i$, $j$, $\Delta d$ and $\Delta t$ for a leg; a hold uses
+$n_{H,i}$ instead. \texttt{first,middle} are $Q_1,Q_2$.
+\texttt{result[point.number]} records the rounded requirement after
+adding the hold, while \texttt{required} retains full precision.
+
+\path{lib/route_fuel.py}, \texttt{remaining\_route\_fuel}:
+\begin{lstlisting}[numbers=left,firstnumber=180,numberstyle=\tiny,xleftmargin=2em]
+dry = _number(dry_weight_lb, "dry weight", positive=True)
+if not points:
+    raise FuelModelError("Planned route")
+required = float(ALLOWANCE_LB)
+result = {}
+
+def rounded():
+    return ROUNDING_LB * math.ceil(round(required / ROUNDING_LB, 9))
+
+for index in range(len(points) - 1, -1, -1):
+    point = points[index]
+    hold = _number(point.hold_hours, "hold duration")
+    if hold < 0 or hold > 24:
+        raise FuelModelError("Hold duration")
+    if hold:
+        steps = max(1, math.ceil(hold * 120))
+        dt = hold / steps
+        for _ in range(steps):
+            first, _ = model.flow(point.altitude_ft, point.cas_kt, dry + required, drag_index)
+            middle, _ = model.flow(point.altitude_ft, point.cas_kt,
+                                   dry + required + first * dt / 2, drag_index)
+            required += middle * dt
+    result[point.number] = rounded()
+    if index == 0:
+        break
+    previous = points[index - 1]
+    distance = math.hypot(point.north_ft - previous.north_ft,
+                          point.east_ft - previous.east_ft) / FEET_PER_NM
+    if distance == 0:
+        if point.altitude_ft != previous.altitude_ft:
+            raise FuelModelError("Zero-length altitude transition")
+        continue
+    gradient = (point.altitude_ft - previous.altitude_ft) / (distance * FEET_PER_NM)
+    steps = max(1, math.ceil(distance / 2))
+    ds = distance / steps
+    for step in range(steps):
+        fraction = 1 - (step + .5) / steps
+        altitude = previous.altitude_ft + fraction * (point.altitude_ft - previous.altitude_ft)
+        first, speed = model.flow(altitude, point.cas_kt, dry + required, drag_index, gradient)
+        dt = ds / speed
+        middle, _ = model.flow(altitude, point.cas_kt, dry + required + first * dt / 2,
+                               drag_index, gradient)
+        required += middle * dt
+return result
+\end{lstlisting}
+
+\section{Navigation, weather and terrain}\label{sec:nav}
+\subsection{DTC offset geometry}\label{subsec:offset-geometry}
+\subsubsection*{Values}
+DTC offset-marker positions on the map, and the \texttt{BRG}/\texttt{RNG}
+values updated when an offset is dragged: true bearing to $0.1^\circ$
+and horizontal range to the nearest foot.
+
+\subsubsection*{Formulas}
+\begin{align*}
+ N'&=N+r\cos\theta_T,& E'&=E+r\sin\theta_T,\\
+ r&=\sqrt{\Delta N^2+\Delta E^2},&
+ \theta_T&=\left(\frac{180^\circ}{\pi}\atan(\Delta E,\Delta N)\right)
+             \bmod360^\circ.
+\end{align*}
+The first pair projects an offset; the second recovers bearing/range
+from two positions. Geometry uses the theater's north/east plane.
+
+\subsubsection*{Variables}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item $N,E$ and $N',E'$: origin and offset north/east coordinates, in ft.
+$\Delta N=N'-N$ and $\Delta E=E'-E$ are their differences.
+\item $r$: horizontal range in ft; elevation is excluded.
+\item $\theta_T$: clockwise bearing from true north, in degrees.
+$\atan(\Delta E,\Delta N)$ returns radians; the explicit factor
+$180^\circ/\pi$ converts to degrees. Projection converts $\theta_T$
+back to radians before evaluating sine/cosine.
+\end{itemize}
+
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $N,E$ are read from the first two fields of
+\texttt{[STPT].target\_k=N,E,Z,action,...} in the loaded
+\path{<callsign/save>.ini}; the displayed steerpoint number is $k+1$.
+The parser is \path{lib/parsers/parse_callsign_ini.py}.
+\item $\theta_T,r$ come from \texttt{[NAV OFFSETS]} in the same file,
+or the edited DTC fields. \texttt{VIP}, \texttt{VIPPUP}, \texttt{VRP}
+and \texttt{VRPPUP} rows store \texttt{stpt,brg,rng,elev};
+\texttt{OA1-stpt}/\texttt{OA2-stpt} store \texttt{brg,rng,elev}.
+Here \texttt{brg} is true degrees and \texttt{rng} is feet.
+\item $N',E'$ are computed by \texttt{projectOffsetFromBmsCoord}
+or \texttt{projectBearingRange} in \path{templates/dtc.html}.
+Dragging supplies the new point through \texttt{mapLatLngToBmsCoord};
+\texttt{getDraggedOffsetMetrics} applies the inverse formulas.
+Pop-up geometry in section~\ref{sec:popup} uses the same projection
+and \texttt{bearingRangeBetween}.
+\item The conversion between $N,E$ and web-map latitude/longitude
+uses the theater's WGS84 Transverse Mercator projection. Its construction
+follows oakdesign's \emph{Falcon BMS Tacview Converter}~\cite{oakdesign_converter},
+as credited in \path{templates/map.html} (line 646). The DTC reverse
+conversion is \texttt{mapLatLngToBmsCoord} in \path{templates/dtc.html}.
+\end{itemize}
+
+\subsubsection*{Example}
+Using STPT 1 and 2 from \path{I/Campaign/weight_tests.ini} as the two
+positions (these are route points, not saved offset rows):
+\[
+ (N,E)=(1923708.25,1733469.375),\qquad
+ (N',E')=(1999147.75,1687549.75)\ {\rm ft}.
+\]
+Thus
+\[
+ r=\sqrt{75439.5^2+(-45919.625)^2}=88316.08076\ {\rm ft},\qquad
+ \theta_T=328.67135^\circ.
+\]
+The offset formatter gives \texttt{BRG 328.7}, \texttt{RNG 88316}.
+Projecting the unrounded $r,\theta_T$ from STPT 1 recovers STPT 2.
+
+\subsubsection*{Code}
+\path{templates/dtc.html}, \texttt{projectBearingRange} and
+\texttt{bearingRangeBetween}; \texttt{normalizeBearing} wraps
+degrees into $[0,360)$:
+\begin{lstlisting}[numbers=left,firstnumber=742,numberstyle=\tiny,xleftmargin=2em]
+function projectBearingRange(baseCoord, bearing, rangeFeet) {
+  if (!baseCoord || !Number.isFinite(bearing) || !Number.isFinite(rangeFeet)) return null;
+  const radians = normalizeBearing(bearing) * Math.PI / 180;
+  return {
+    northFeet: baseCoord.northFeet + Math.cos(radians) * rangeFeet,
+    eastFeet: baseCoord.eastFeet + Math.sin(radians) * rangeFeet,
+  };
+}
+
+function bearingRangeBetween(fromCoord, toCoord) {
+  if (!fromCoord || !toCoord) return null;
+  const deltaNorth = toCoord.northFeet - fromCoord.northFeet;
+  const deltaEast = toCoord.eastFeet - fromCoord.eastFeet;
+  const rangeFeet = Math.hypot(deltaNorth, deltaEast);
+  let bearing = Math.atan2(deltaEast, deltaNorth) * 180 / Math.PI;
+  if (bearing < 0) bearing += 360;
+  return {
+    brg: formatDraggedBearing(bearing),
+    rng: formatDraggedRange(rangeFeet),
+  };
+}
+\end{lstlisting}
+
+The same file's formatters set the precision returned in
+\texttt{brg}/\texttt{rng} and used for dragged offsets:
+\begin{lstlisting}[numbers=left,firstnumber=923,numberstyle=\tiny,xleftmargin=2em]
+function formatDraggedBearing(value) {
+  if (!Number.isFinite(value)) return "";
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function formatDraggedRange(value) {
+  if (!Number.isFinite(value)) return "";
+  return String(Math.round(value));
+}
+\end{lstlisting}
+
+\subsection{Magnetic headings}\label{subsec:magnetic-headings}
+\subsubsection*{Values}
+Flight-plan \texttt{MHDG}, in whole degrees, and pop-up magnetic
+headings, to $0.1^\circ$. When variation is unavailable, the app
+identifies the headings as true (\texttt{THDG} or a $^\circ$T suffix).
+
+\subsubsection*{Formulas}
+\begin{align*}
+ \theta_M&=(\theta_T-\nu)\bmod360^\circ,\\
+ \theta_{FP}&=\lfloor\theta_M+0.5^\circ\rfloor\bmod360^\circ,\\
+ \theta_{POP}&=\left(\frac{\lfloor10\theta_M+0.5^\circ\rfloor}{10}\right)
+                  \bmod360^\circ.
+\end{align*}
+Rounding operates on the numerical degree values.
+For a pilot-entered magnetic heading, the inverse conversion
+$\theta_T=(\theta_M+\nu)\bmod360^\circ$ is applied before geometry.
+
+\subsubsection*{Variables}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item $\theta_T,\theta_M$: true and magnetic heading, in degrees.
+$\theta_{FP},\theta_{POP}$ are the rounded flight-plan and pop-up
+headings.
+\item $\nu$: magnetic variation in degrees, positive east and negative
+west. It is bilinearly interpolated:
+\[
+ \nu=(1-a)(1-b)\nu_{00}+a(1-b)\nu_{10}
+       +(1-a)b\nu_{01}+ab\nu_{11}.
+\]
+\item $x=N/c_k,\ y=E/c_k$: the magnetic grid's coordinates in km,
+where $N,E$ are DTC north/east feet and
+$c_k=1000/0.3048=3280.839895013123$ ft/km.
+Here the grid's $x$ is \emph{north}, and $y$ is \emph{east}.
+\item $x_0,x_1$ and $y_0,y_1$: adjacent grid-axis entries bracketing
+$x,y$. The fractional positions are
+$a=(x-x_0)/(x_1-x_0)$ and $b=(y-y_0)/(y_1-y_0)$.
+\item $\nu_{00},\nu_{10},\nu_{01},\nu_{11}$: grid variations at
+$(x_0,y_0)$, $(x_1,y_0)$, $(x_0,y_1)$, $(x_1,y_1)$.
+\end{itemize}
+
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $\theta_T$ for a flight-plan row is the heading column in
+\path{B/User/Briefings/briefing.txt}, parsed by
+\path{lib/parsers/parse_briefing_txt.py}. It is not recomputed from
+DTC positions. Pop-up headings come from the geometry described in
+section~\ref{sec:popup}.
+\item $N,E$ come from the matching numbered DTC steerpoint in
+\path{<callsign/save>.ini}. \path{lib/theater_paths.py:magnetic_variation_for_steerpoints}
+samples variation at each flight-plan row's point. The pop-up plan
+uses the selected reference steerpoint's variation throughout.
+\item $x_0,x_1,y_0,y_1$ and the four corner variations are read from
+the active terrain's \path{Weather/MagVarMap_*.CSV} by
+\path{openchart/vendor/opencam/theater.py:load_magnetic_variation_grid}.
+The header after \texttt{y\textbackslash x} gives the $x$ axis;
+the first entry of each subsequent row gives $y$; the remaining
+entries are signed degrees. The leading \texttt{\#year} is retained
+as the grid epoch; no date-dependent correction is applied.
+\item $\nu$ is computed by \texttt{MagneticVariationGrid} in that
+file. A missing grid or an out-of-grid point leaves variation
+unavailable; the app then retains true headings.
+\end{itemize}
+
+\subsubsection*{Example}
+At STPT 2 of \path{I/Campaign/weight_tests.ini},
+$(x,y)=(609.3402342,514.3651638)$ km.
+\path{I/Terrdata/Israel/Weather/MagVarMap_Israel.CSV} brackets these
+by $(x_0,x_1)=(608,624)$ and $(y_0,y_1)=(512,528)$ km, with
+\[
+ (\nu_{00},\nu_{10},\nu_{01},\nu_{11})
+ =(4.145995,4.144043,4.162748,4.160932)^\circ.
+\]
+Therefore $a=0.08376464$, $b=0.14782274$, and
+$\nu=4.14830965^\circ$. The briefing's STPT 2 heading is $329^\circ$:
+\[
+ \theta_M=329-4.14830965=324.85169035^\circ
+ \quad\Longrightarrow\quad \texttt{MHDG 325}.
+\]
+
+\subsubsection*{Code}
+\path{openchart/vendor/opencam/theater.py},
+\texttt{MagneticVariationGrid}: \texttt{x\_fraction}/\texttt{y\_fraction}
+are $a,b$; \texttt{lower}/\texttt{upper} interpolate the two $y$ rows.
+The campaign-coordinate wrapper shows the north/east axis order.
+\begin{lstlisting}[numbers=left,firstnumber=154,numberstyle=\tiny,xleftmargin=2em]
+def variation_degrees(self, x_km: float, y_km: float) -> float:
+    """Bilinearly interpolate signed magnetic variation on the grid."""
+
+    x = _bounded_axis_value(x_km, self.x_km, "x_km")
+    y = _bounded_axis_value(y_km, self.y_km, "y_km")
+    x_index, x_fraction = _interpolation_position(x, self.x_km)
+    y_index, y_fraction = _interpolation_position(y, self.y_km)
+    lower_left = self.values_degrees[y_index][x_index]
+    lower_right = self.values_degrees[y_index][x_index + 1]
+    upper_left = self.values_degrees[y_index + 1][x_index]
+    upper_right = self.values_degrees[y_index + 1][x_index + 1]
+    lower = lower_left + (lower_right - lower_left) * x_fraction
+    upper = upper_left + (upper_right - upper_left) * x_fraction
+    return lower + (upper - lower) * y_fraction
+
+def variation_at_campaign_position(
+    self,
+    position_x_ft: float,
+    position_y_ft: float,
+) -> float:
+    return self.variation_degrees(
+        position_x_ft / FEET_PER_KILOMETER,
+        position_y_ft / FEET_PER_KILOMETER,
+    )
+\end{lstlisting}
+
+\path{lib/html_gen.py}, \texttt{\_flightplan\_headings}, the branch
+where variation is available:
+\begin{lstlisting}[numbers=left,firstnumber=37,numberstyle=\tiny,xleftmargin=2em]
+    heading = str(math.floor((true_heading - variation) % 360 + 0.5) % 360)
+headings[str(point.number)] = heading
+\end{lstlisting}
+
+\path{templates/dtc_popup.js}, \texttt{formatPopupHeading};
+a missing variation contributes zero and is labelled true by
+\texttt{popupHeadingReference}:
+\begin{lstlisting}[numbers=left,firstnumber=12,numberstyle=\tiny,xleftmargin=2em]
+function formatPopupHeading(trueHeading, plan) {
+  const heading = Number.parseFloat(trueHeading);
+  if (!Number.isFinite(heading)) return "---";
+  const magnetic = normalizeBearing(heading - (plan.magneticVariation ?? 0));
+  return formatPopupDegrees((Math.round(magnetic * 10) / 10) % 360);
+}
+\end{lstlisting}
+
+The inverse conversion in the same file preserves true bearings
+for geometry and stored DTC offsets:
+\begin{lstlisting}[numbers=left,firstnumber=441,numberstyle=\tiny,xleftmargin=2em]
+const magneticVariation = getPopupMagneticVariation();
+// Convert the pilot's heading once; geometry and DTC offset rows stay true.
+const trueHeading = normalizeBearing(heading + (magneticVariation ?? 0));
+\end{lstlisting}
+
+\subsection{Departure weather}\label{subsec:departure-weather}
+\subsubsection*{Values}
+The ATIS table displays \texttt{WIND} (whole degrees/knots),
+\texttt{TEMP} (whole degrees Celsius), \texttt{QNH}
+(two decimals inHg and whole hPa), \texttt{WX} (category),
+\texttt{LOW CLD BASE} (whole ft MSL or \texttt{NONE}), and
+\texttt{FOG BOUNDARY} (km to one decimal).
+
+\subsubsection*{Formulas}
+\[
+ QNH_{\rm inHg}=\frac{p}{C_p},\qquad
+ \theta_W=\lfloor(\theta\bmod360^\circ)+0.5^\circ\rfloor
+               \bmod360^\circ.
+\]
+Pressure is converted directly from the selected cell; the app
+does not apply an airport-elevation correction. Wind direction
+is wrapped and rounded without magnetic-variation correction.
+Other weather values are formatted from the stored cell.
+
+\subsubsection*{Variables}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item $p,QNH_{\rm inHg}$: cell pressure in hPa and its inHg equivalent.
+$C_p=33.8638866667$ hPa/inHg is the application's fixed conversion
+constant, \texttt{HPA\_PER\_INHG}.
+\item $\theta,\theta_W,U$: stored first-layer wind direction,
+rounded displayed direction (degrees), and first-layer speed (knots).
+\item $T,\kappa,H_c,F$: cell temperature ($^\circ$C), weather-type
+code, low-cloud base (ft MSL), and stored fog-end distance (km).
+$F$ is shown as a fog boundary, not a computed visibility.
+\item $N,E$: departure north/east coordinates in ft;
+$N_k=0.0003048N$, $E_k=0.0003048E$ convert them to km.
+\item $L$: theater side length in km; $w,h$: FMAP width and height
+in cells.
+\item $c,r$: zero-based column and row of the sampled cell:
+\[
+ c=\left\lfloor wE_k/L-0.5\right\rfloor\bmod w,\qquad
+ r=\left\lceil h(1-N_k/L)-0.5\right\rceil\bmod h.
+\]
+Columns run eastward and rows southward. The fixed half-cell
+offset and edge wrapping implement the stored-cell convention
+used by \texttt{\_departure\_cell}; coordinates must be within
+$0\leq N_k,E_k\leq L$.
+\end{itemize}
+
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $N,E$ are read from the unique steerpoint with action 1 in
+\texttt{[STPT]} of the loaded DTC \path{<callsign/save>.ini}.
+$L$ comes from the active theater's
+\texttt{Theater size in KM} in \path{NewTerrain/Theater.txt},
+through \path{lib/theater_paths.py:read_theater_map_info}.
+\item $w,h,p,T,\theta,U,\kappa,H_c,F$ come from the loaded CAM's
+same-named adjacent \path{<save>.fmap}, parsed by
+\path{lib/cam/opencam/fmap_parser.py} and
+\path{lib/cam/opencam/fmap_wrappers.py}.
+The selected cell has array index $rw+c$. Its fields are
+\texttt{pressure\_hpa}, \texttt{temperature\_c},
+\texttt{wind\_directions\_deg[0]}, \texttt{wind\_speeds\_knots[0]},
+\texttt{weather\_type}, \texttt{cumulus\_base\_ft} and
+\texttt{fog\_end\_km}. No spatial interpolation or movement in time
+is applied to the saved snapshot.
+\item $\kappa$ is mapped in \path{lib/atis.py} as
+1 sunny, 2 fair, 3 poor, 4 inclement. Sunny displays
+\texttt{NONE} for low cloud; types 2--4 display a valid $H_c$.
+Unrecognised codes display \texttt{UNKNOWN (code)}.
+\item $QNH_{\rm inHg},\theta_W$ and the formatted cell values are
+computed by \path{lib/atis.py:build_departure_atis} and displayed
+by \path{templates/atis.html}. Missing or invalid fields remain
+unavailable; a missing/mismatched FMAP produces a status message.
+\end{itemize}
+
+\subsubsection*{Example}
+\path{B/Data/Campaign/714_html_test.fmap} has $w=h=59$.
+For the departure in \path{test/User/Config/wsy.ini},
+$(N,E)=(1700669.625,2468185)$ ft, and Korea's
+\path{B/Data/TerrData/Korea/NewTerrain/Theater.txt} gives $L=1024$ km:
+\begin{align*}
+ (N_k,E_k)&=(518.3641017,752.302788)\ {\rm km},\\
+ c&=\lfloor59(752.302788)/1024-0.5\rfloor\bmod59=42,\\
+ r&=\lceil59(1-518.3641017/1024)-0.5\rceil\bmod59=29.
+\end{align*}
+Cell $29\cdot59+42=1753$ has
+$p=1011.96533203$ hPa, $\theta=39.63571167^\circ$,
+$U=9.66757011$ kt, $T=5.97265148^\circ$C, $\kappa=3$,
+$H_c=2159.93506$ ft and $F=59.71747$ km. In particular,
+\[
+ QNH_{\rm inHg}=1011.96533203/33.8638866667
+              =29.88332\longrightarrow29.88.
+\]
+The readout is \texttt{WIND: 040 DEG / 10 KT},
+\texttt{TEMP: 6 DEG C}, \texttt{QNH: 29.88 INHG / 1012 HPA},
+\texttt{WX: POOR}, \texttt{LOW CLD BASE: 2,160 FT MSL},
+\texttt{FOG BOUNDARY: 59.7 KM}.
+
+\subsubsection*{Code}
+\path{lib/atis.py}, \texttt{\_departure\_cell}, coordinate conversion
+and cell selection:
+\begin{lstlisting}[numbers=left,firstnumber=34,numberstyle=\tiny,xleftmargin=2em]
+north_km, east_km = north_ft * 0.0003048, east_ft * 0.0003048
+if not (0 <= north_km <= theater_size_km and 0 <= east_km <= theater_size_km):
+    raise ValueError("Departure is outside the active theater")
+column = math.floor(east_km / theater_size_km * weather.width - 0.5) % weather.width
+row = math.ceil((1 - north_km / theater_size_km) * weather.height - 0.5) % weather.height
+return weather.cell(row, column)
+\end{lstlisting}
+
+The same file's \texttt{build\_departure\_atis} converts and formats
+the fields from that cell; \texttt{\_finite} rejects non-finite values:
+\begin{lstlisting}[numbers=left,firstnumber=84,numberstyle=\tiny,xleftmargin=2em]
+result["weather_type"] = WEATHER_TYPES.get(cell.weather_type, f"Unknown ({cell.weather_type})")
+# The per-cell cloud-base field controls the low cloud layer (ft MSL).
+# Sunny disables that layer even when the FMAP retains a base value.
+cloud_base = _finite(cell.cumulus_base_ft)
+if cell.weather_type == 1:
+    result["cloud_base"] = "None"
+elif cell.weather_type in (2, 3, 4) and cloud_base is not None and cloud_base >= 0:
+    result["cloud_base"] = f"{cloud_base:,.0f} ft MSL"
+# Preserve the stored fog-end distance. Live ATIS visibility has not
+# been established as a direct conversion of this input to BMS's model.
+fog_boundary = _finite(cell.fog_end_km)
+if fog_boundary is not None and fog_boundary >= 0:
+    result["fog_boundary"] = f"{fog_boundary:.1f} km"
+
+pressure, temperature = _finite(cell.pressure_hpa), _finite(cell.temperature_c)
+speed, direction = _finite(cell.wind_speeds_knots[0]), _finite(cell.wind_directions_deg[0])
+if speed is not None and speed >= 0 and direction is not None:
+    result["wind"] = f"{math.floor(direction % 360 + 0.5) % 360:03d} deg / {speed:.0f} kt"
+if temperature is not None:
+    result["temperature"] = f"{temperature:.0f} deg C"
+if pressure is not None and pressure > 0:
+    result["qnh"] = f"{pressure / HPA_PER_INHG:.2f} inHg / {pressure:.0f} hPa"
+\end{lstlisting}
+
+\subsection{Terrain and AGL-to-MSL conversion}\label{subsec:terrain}
+\subsubsection*{Values}
+The pop-up calculator displays AGL and MSL altitudes in whole feet
+for \texttt{PDWN}, \texttt{APEX}, \texttt{RALT} and \texttt{MRA};
+map labels also use this conversion.
+
+\subsubsection*{Formula}
+\[
+ H_{\rm MSL}=H_{\rm AGL}+H_{\rm terrain}.
+\]
+
+\subsubsection*{Variables}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item $H_{\rm AGL},H_{\rm MSL}$: height above ground and altitude
+above mean sea level, in ft.
+\item $H_{\rm terrain}$: signed ground elevation in ft, read from
+one heightmap sample at the requested position.
+\item $N,E$: requested north/east coordinates in ft.
+$N_{\max}=E_{\max}=1000L/0.3048$ are the theater extents in ft,
+where $L$ is the theater side length in km.
+\item $w,h$: heightmap width and height in pixels.
+$x,y$: zero-based pixel column and row, computed as
+\begin{align*}
+ x&=\clip\!\left(\trunc\!\left[(w-1)E/E_{\max}\right],0,w-1\right),\\
+ y&=\clip\!\left(\trunc\!\left[(h-1)(1-N/N_{\max})\right],0,h-1\right).
+\end{align*}
+$\trunc$ truncates to an integer; $\clip$ clamps to the pixel bounds.
+Columns run eastward and rows southward. Out-of-theater positions
+are rejected before this calculation.
+\item $o=2(yw+x)$: byte offset of the sample in the RAW file.
+The factor 2 is the byte size of one signed 16-bit elevation.
+\end{itemize}
+
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $H_{\rm AGL},N,E$ come from the pop-up plan in
+\path{templates/dtc_popup.js}; its inputs and geometry are described
+in section~\ref{sec:popup}. \texttt{PDWN}/\texttt{APEX} use terrain
+at the pull-down point; \texttt{RALT}/\texttt{MRA} use terrain at
+the release point (or target if that point is absent).
+\item $L,w,h$ are read from \texttt{Theater size in KM} and
+\texttt{Map size in pixels} in the active
+\path{NewTerrain/Theater.txt}, resolved through the theater TDF's
+\texttt{terraindir}. \path{lib/terrain_elevation.py:_resolve_heightmap_spec}
+sets both extents from $L$ and both dimensions from the pixel size.
+If the pixel size is absent, it infers a square side from half the
+RAW byte count, falling back to 32768 if that is not a square.
+\item $H_{\rm terrain}$ is read from the active
+\path{NewTerrain/Heightmaps/Heightmap.RAW} by
+\path{lib/terrain_elevation.py:HeightmapSampler.elevation_feet}.
+The two bytes at $o$ are decoded as a little-endian signed 16-bit
+integer in feet. This is a single-pixel lookup without interpolation.
+The heightmap lookup approach is also credited to oakdesign's
+converter~\cite{oakdesign_converter} in \path{README.md};
+see its \texttt{CoordinateConverter.get\_elevation}.
+\item $H_{\rm MSL}$ is computed by \texttt{popupAglMslLine} and
+related formatters in \path{templates/dtc_popup.js}. Until a finite
+terrain sample is available, the label reads \texttt{MSL pending}.
+\end{itemize}
+
+\subsubsection*{Example}
+\path{I/Terrdata/Israel/NewTerrain/Theater.txt} gives $L=1024$ km
+and $w=h=32768$, hence $N_{\max}=E_{\max}=3359580.05249$ ft.
+At STPT 1 of \path{I/Campaign/weight_tests.ini},
+$(N,E)=(1923708.25,1733469.375)$ ft:
+\[
+ x=16907,\qquad y=14004,\qquad
+ o=2(14004\cdot32768+16907)=917799958.
+\]
+The sample in
+\path{I/Terrdata/Israel/NewTerrain/Heightmaps/Heightmap.RAW}
+is $H_{\rm terrain}=154$ ft. An illustrative $H_{\rm AGL}=2000$ ft
+at that position would display $H_{\rm MSL}=2000+154=2154$ ft.
+The airport elevation in the DTC is instead $-Z=120$ ft;
+section~\ref{sec:mfob} uses that DTC value.
+
+\subsubsection*{Code}
+\path{lib/terrain_elevation.py}, \texttt{HeightmapSampler.elevation\_feet},
+after the theater-bound check: map to a pixel, seek to its two bytes,
+and decode the signed elevation.
+\begin{lstlisting}[numbers=left,firstnumber=59,numberstyle=\tiny,xleftmargin=2em]
+east_ratio = east_feet / self.spec.max_east_feet if self.spec.max_east_feet else 0
+north_ratio = north_feet / self.spec.max_north_feet if self.spec.max_north_feet else 0
+pixel_x = int(east_ratio * (self.spec.width - 1))
+pixel_y = int((1.0 - north_ratio) * (self.spec.height - 1))
+pixel_x = max(0, min(self.spec.width - 1, pixel_x))
+pixel_y = max(0, min(self.spec.height - 1, pixel_y))
+
+offset = (pixel_y * self.spec.width + pixel_x) * 2
+with self._lock:
+    if self._file is None:
+        try:
+            self._file = self.spec.path.open("rb")
+        except OSError as exc:
+            raise HeightmapReadError(f"Could not open heightmap {self.spec.path}: {exc}") from exc
+    try:
+        self._file.seek(offset)
+        raw = self._file.read(2)
+    except OSError as exc:
+        raise HeightmapReadError(f"Could not read heightmap {self.spec.path}: {exc}") from exc
+
+if len(raw) != 2:
+    raise HeightmapReadError(f"Expected 2 bytes at offset {offset}, got {len(raw)}")
+return int(struct.unpack("<h", raw)[0])
+\end{lstlisting}
+
+\path{templates/dtc_popup.js}, \texttt{popupAglMslLine};
+\texttt{aglFeet} and \texttt{terrainFeet} are $H_{\rm AGL}$ and
+$H_{\rm terrain}$:
+\begin{lstlisting}[numbers=left,firstnumber=252,numberstyle=\tiny,xleftmargin=2em]
+function popupAglMslLine(label, aglFeet, terrainFeet) {
+  const aglText = formatPopupNumber(aglFeet, 0) + " ft";
+  const mslText = Number.isFinite(terrainFeet)
+    ? formatPopupNumber(aglFeet + terrainFeet, 0) + " ft"
+    : "MSL pending";
+  return popupLine(label, popupMetric("AGL", aglText), popupMetric("MSL", mslText));
+}
+\end{lstlisting}
+
+
+\section{Pop-up attack calculator}\label{sec:popup}
+The calculator uses pilot-entered attack parameters and fixed application
+constants. BMS data supplies the reference positions, magnetic variation
+and terrain elevations; the model does not read weapon or aircraft
+aerodynamic tables.
+
+\subsection{Bomb range}\label{subsec:popup-bomb}
+\subsubsection*{Value}
+\texttt{BOMB RANGE} in the DTC pop-up inputs and support values, in whole
+feet. Low/high-drag modes compute it; manual mode uses the entered range.
+
+\subsubsection*{Formulas}
+For each time step before ground crossing:
+\begin{align*}
+ a_j&=\begin{cases}
+ -kA_d|u_j|/\sqrt{u_j^2+\epsilon},&u_j>0,\\
+ 0,&u_j=0,
+ \end{cases}\\
+ \Delta x_j&=u_j\Delta t+\tfrac12a_j\Delta t^2,&
+ \Delta h_j&=-w_j\Delta t-\tfrac12g\Delta t^2,\\
+ x_{j+1}&=x_j+\Delta x_j,&h_{j+1}&=h_j+\Delta h_j,\\
+ u_{j+1}&=\max(0,u_j+a_j\Delta t),&
+ w_{j+1}&=w_j+g\Delta t.
+\end{align*}
+The final step is corrected by its overshoot fraction:
+\[
+ B=x_m-f\Delta x_{m-1},\qquad t_f=(m-f)\Delta t.
+\]
+
+\subsubsection*{Variables}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item $H,V,\delta$: release height in ft AGL, release TAS in knots,
+and positive dive angle in degrees.
+\item $x_j,h_j,u_j,w_j$: accumulated horizontal range, remaining
+height (ft), horizontal speed and downward speed (ft/s) at step $j$.
+Initially $x_0=0$, $h_0=H$, and
+\[
+ u_0=\rnd_{0.01}(c_VV\cos\delta),\qquad
+ w_0=\rnd_{0.01}(c_VV\sin\delta).
+\]
+$\rnd_{0.01}$ rounds to $0.01$ ft/s;
+$c_V=1.68781$ ft/s per knot is \texttt{FEET\_PER\_KNOT\_SECOND}.
+\item $\Delta t=0.1$ s: fixed time step. $j=0,\ldots,m-1$ is the
+step index; $m$ is the first index for which $h_m\leq0$.
+\item $a_j$: horizontal acceleration in ft/s$^2$;
+$\Delta x_j,\Delta h_j$: range and signed height changes during step $j$.
+\item $k,g$: fixed model parameters, $(0.165,32.177)$ for low drag
+and $(1,20.91505)$ for high drag. $k$ is dimensionless and $g$ is
+the model's downward acceleration in ft/s$^2$; the high-drag value
+is an effective acceleration.
+$A_d=140$ ft/s$^2$ and $\epsilon=0.1$ (ft/s)$^2$ are fixed constants
+in the horizontal-drag expression.
+\item $f=h_m/\Delta h_{m-1}$: fraction of the final step below
+ground. Both numerator and denominator are nonpositive.
+$B$ is the corrected range in ft and $t_f$ the corrected fall time
+in seconds. The latter feeds \texttt{TOF STICK} in
+section~\ref{subsec:popup-profile}.
+\end{itemize}
+
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $H,V,\delta$ come from the \texttt{data-popup-field} controls
+\texttt{releaseAltitude}, \texttt{releaseSpeed} and \texttt{diveAngle}
+in \path{templates/dtc.html}. The \texttt{rangeModel} control selects
+\texttt{low\_drag}, \texttt{high\_drag} or \texttt{manual}.
+These are pilot inputs, not values extracted from a BMS weapon file.
+\item $c_V$ is declared in \path{templates/dtc.html}.
+$\Delta t,k,g,A_d,\epsilon$ are literals in
+\path{templates/dtc_popup.js:computeDragBombTrajectory}.
+The approximation has no wind or atmospheric-density input.
+\item $B,t_f$ are returned by \texttt{computeDragBombTrajectory}.
+\texttt{computePopupPlan} retains the unrounded range for geometry
+and writes a whole-foot value into the range input.
+Manual mode reads $B$ from \texttt{bombRange} and leaves $t_f$
+unavailable. A failed trajectory or nonpositive range rejects the plan.
+\end{itemize}
+
+\subsubsection*{Example}
+The input fixture in \path{tests/popup_briefing.test.cjs} uses
+$H=2000$ ft, $V=520$ kt, $\delta=15^\circ$ and low drag:
+$u_0=847.76$, $w_0=227.16$ ft/s.
+The first step gives $a_0=-23.10000$ ft/s$^2$,
+$x_1=84.66050$ ft and $h_1=1977.12312$ ft.
+Ground crossing occurs at $m=62$:
+\[
+ h_{62}=-26.83394,\quad \Delta h_{61}=-42.504855,\quad
+ x_{62}=4812.13003,\quad \Delta x_{61}=70.56950\ {\rm ft}.
+\]
+Thus $f=0.63131471$, $B=4767.57847$ ft and $t_f=6.13687$ s;
+the displayed range is \texttt{4768}. The fixture's manual range
+5138 ft is unused in this mode.
+
+\subsubsection*{Code}
+\path{templates/dtc_popup.js}, \texttt{computeDragBombTrajectory}.
+The guard rejects a trajectory reaching 10000 iterations.
+\texttt{altitude}/\texttt{lastStepAltitudeChange} gives $f$:
+\begin{lstlisting}[numbers=left,firstnumber=299,numberstyle=\tiny,xleftmargin=2em]
+function computeDragBombTrajectory(releaseAltitude, releaseSpeed, diveAngle, rangeModel) {
+  const stepSeconds = 0.1;
+  const dragScale = rangeModel === "high_drag" ? 1.0 : 0.165;
+  const gravity = rangeModel === "high_drag" ? 20.91505 : 32.177;
+  const diveRadians = diveAngle * Math.PI / 180;
+  let horizontalSpeed = Math.round(Math.cos(diveRadians) * releaseSpeed * FEET_PER_KNOT_SECOND * 100) / 100;
+  let verticalSpeedDown = Math.round(Math.sin(diveRadians) * releaseSpeed * FEET_PER_KNOT_SECOND * 100) / 100;
+  let rangeFeet = 0;
+  let altitude = releaseAltitude;
+  let lastStepRange = 0;
+  let lastStepAltitudeChange = 0;
+  let timeSeconds = 0;
+  let guard = 0;
+  while (altitude > 0 && guard < 10000) {
+    guard += 1;
+    const horizontalDrag = dragScale * 140 * Math.abs(horizontalSpeed) / Math.sqrt(horizontalSpeed * horizontalSpeed + 0.1);
+    const acceleration = horizontalSpeed > 0 ? -horizontalDrag : 0;
+    lastStepRange = horizontalSpeed * stepSeconds + 0.5 * acceleration * stepSeconds * stepSeconds;
+    lastStepAltitudeChange = -verticalSpeedDown * stepSeconds - 0.5 * gravity * stepSeconds * stepSeconds;
+    rangeFeet += lastStepRange;
+    altitude += lastStepAltitudeChange;
+    timeSeconds += stepSeconds;
+    horizontalSpeed = Math.max(0, horizontalSpeed + acceleration * stepSeconds);
+    verticalSpeedDown += gravity * stepSeconds;
+  }
+  if (guard >= 10000 || !Number.isFinite(altitude) || !Number.isFinite(lastStepAltitudeChange) || lastStepAltitudeChange === 0) return null;
+  const overshootFraction = altitude / lastStepAltitudeChange;
+  return {
+    rangeFeet: rangeFeet - overshootFraction * lastStepRange,
+    timeSeconds: timeSeconds - overshootFraction * stepSeconds,
+  };
+}
+\end{lstlisting}
+
+\subsection{Stick, tracking and climb profile}\label{subsec:popup-profile}
+\subsubsection*{Values}
+The calculator and Pop-up briefing display \texttt{TOF STICK} (seconds
+to one decimal), \texttt{CA} (climb angle), \texttt{PDWN}/\texttt{APEX}
+(altitudes), and \texttt{AOD}, \texttt{PUP}, \texttt{RADIUS}, \texttt{MAP}
+(distances in whole feet). Support values include \texttt{STICK LEN},
+\texttt{STICK DUR}, \texttt{RELEASE RANGE}, \texttt{GROUND SPEED},
+\texttt{TRACKING}, \texttt{TRACK ALT} and \texttt{ANGLE OFF}.
+AGL heights are also shown in MSL using section~\ref{subsec:terrain}.
+
+\subsubsection*{Formulas}
+\begin{align*}
+ V_h&=V\cos\delta,& L&=(n-1)s,& t_s&=\frac{L}{c_VV_h},\\
+ B_r&=B+\begin{cases}L/2,&\text{MID},\\0,&\text{START},\end{cases}&
+ t_{\rm stick}&=t_f+t_s,\\
+ X_{\rm track}&=c_GV_ht,& Z_{\rm track}&=c_GVt\sin\delta,&
+ H_{\rm track}&=H+Z_{\rm track},\\
+ MAP&=B_r+X_{\rm track},&
+ AOD&=\frac{H}{\tan\delta}-B_r,\\
+ \chi&=\begin{cases}\delta+5^\circ,&\delta\leq15^\circ,\\
+                      \delta+10^\circ,&\delta>15^\circ,\end{cases}&
+ \Omega&=2\chi,& R&=\frac{(c_GV)^2}{g_TG},\\
+ H_{\rm PD}&=H_{\rm track}-R(\cos\delta-\cos\chi),&
+ H_{\rm apex}&=H_{\rm PD}+R(1-\cos\chi),\\
+ d_{\rm pop}&=\frac{H_{\rm PD}-H_{\rm in}}{\tan\chi}.
+\end{align*}
+
+\subsubsection*{Variables}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item $H,V,\delta$: release height (ft AGL), TAS (knots) and dive
+angle, as in section~\ref{subsec:popup-bomb}.
+$B,t_f$ are its bomb range (ft) and fall time (s).
+\item $V_h$: horizontal component of release TAS, in knots;
+the app labels it \texttt{GROUND SPEED}. Wind is not included.
+\item $n=\max(1,\lfloor n_{\rm input}+0.5\rfloor)$: integer pulse count,
+from the entered $n_{\rm input}$. $s$ is spacing in ft;
+$L$ is total stick length in ft and $t_s$ is ripple duration in seconds.
+\item $B_r$: target-to-first-release distance in ft. MID adds half
+the stick length to centre the stick on the target; START uses $B$.
+$t_{\rm stick}$ is time from first release to final impact, in seconds.
+\item $t$: entered tracking time in seconds.
+$X_{\rm track},Z_{\rm track}$: horizontal distance and height lost
+during tracking, in ft; $H_{\rm track}$: tracking-start height in ft AGL.
+\item $MAP$: target-to-maneuver-aim-point distance in ft;
+$AOD$: aim-off distance beyond the target, in ft.
+\item $\chi,\Omega$: climb angle and ingress/attack angle-off, in degrees.
+$G$ is the selected dimensionless G value: 3.5 or 5.
+$R$ is the turn/pull-down radius in ft.
+\item $H_{\rm PD},H_{\rm apex},H_{\rm in}$: pull-down, apex and
+entered ingress heights in ft AGL. $d_{\rm pop}$ is the horizontal
+PUP-to-pull-down distance in ft, displayed as \texttt{PUP}.
+\item $c_V=1.68781$ and $c_G=1.69$: application conversion factors
+in ft/s per knot, used for ripple timing and tracking/turn geometry
+respectively. $g_T=32.2$ ft/s$^2$ is the fixed acceleration constant
+in the radius formula.
+\end{itemize}
+
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $H,V,\delta,H_{\rm in},t,n_{\rm input},s$ come from
+\texttt{releaseAltitude}, \texttt{releaseSpeed}, \texttt{diveAngle},
+\texttt{ingressAltitude}, \texttt{timeOnFinal}, \texttt{ripplePulses}
+and \texttt{stickSpacing} in \path{templates/dtc.html}.
+\texttt{stickMode} selects MID/START.
+\item $G$ is selected by \texttt{gProfile}: the UI labels
+\texttt{3-3.5 G} and \texttt{4.5-5 G} correspond to fixed values
+3.5 and 5 in \path{templates/dtc_popup.js:computePopupPlan}.
+The same function contains $c_G,g_T$ and the climb-angle rule;
+$c_V$ is declared in \path{templates/dtc.html}.
+\item $B,t_f$ come from section~\ref{subsec:popup-bomb};
+manual range mode leaves $t_{\rm stick}$ unavailable, displayed
+as \texttt{N/A}. The remaining values are computed in
+\texttt{computePopupPlan} and formatted by \texttt{formatPopupOutput}
+and \texttt{formatPopupBriefing} in \path{templates/dtc_popup.js}.
+The app rejects $AOD\leq0$ or $d_{\rm pop}\leq0$.
+\end{itemize}
+
+\subsubsection*{Example}
+Continuing the fixture in \path{tests/popup_briefing.test.cjs},
+$n=2$, $s=100$ ft, MID, $t=5$ s, $H_{\rm in}=500$ ft and $G=3.5$:
+\begin{align*}
+ V_h&=520\cos15^\circ=502.28143\ {\rm kt},&
+ L&=(2-1)100=100\ {\rm ft},\\
+ t_s&=\frac{100}{1.68781(502.28143)}=0.11796\ {\rm s},&
+ B_r&=4767.57847+50=4817.57847\ {\rm ft},\\
+ t_{\rm stick}&=6.13687+0.11796=6.25483\ {\rm s},&
+ MAP&=4817.57847+4244.27808=9061.85655\ {\rm ft}.
+\end{align*}
+The same calculation gives $AOD=2646.52314$ ft,
+$\chi=20^\circ$, $\Omega=40^\circ$, $R=6852.61260$ ft,
+$H_{\rm track}=3137.25088$ ft, $H_{\rm PD}=2957.48489$ ft,
+$H_{\rm apex}=3370.74800$ ft and $d_{\rm pop}=6751.88424$ ft.
+The briefing shows \texttt{TOF STICK 6.3 sec}, \texttt{CA 20 deg},
+\texttt{PDWN 2957}, \texttt{APEX 3371}, \texttt{AOD 2647},
+\texttt{PUP 6752}, \texttt{RADIUS 6853}, \texttt{MAP 9062} (feet).
+Terrain is absent in this fixture, so MSL labels remain pending.
+
+\subsubsection*{Code}
+\path{templates/dtc_popup.js}, \texttt{computePopupPlan};
+\texttt{ripplePulses} has already been rounded and clamped to at least 1:
+\begin{lstlisting}[numbers=left,firstnumber=406,numberstyle=\tiny,xleftmargin=2em]
+const diveRadians = diveAngle * Math.PI / 180;
+const groundSpeed = releaseSpeed * Math.cos(diveRadians);
+const groundSpeedFps = groundSpeed * FEET_PER_KNOT_SECOND;
+const stickLength = Math.max(0, ripplePulses - 1) * stickSpacing;
+const stickHalfLength = stickMode === "mid" ? stickLength / 2 : 0;
+const stickDuration = groundSpeedFps > 0 ? stickLength / groundSpeedFps : NaN;
+const releaseReferenceRange = bombRange + stickHalfLength;
+const stickTimeOfFall = Number.isFinite(bombTimeOfFall) && Number.isFinite(stickDuration)
+  ? bombTimeOfFall + stickDuration
+  : NaN;
+const horizontalTrackingDistance = groundSpeed * 1.69 * timeOnFinal;
+const verticalTrackingDistance = releaseSpeed * 1.69 * timeOnFinal * Math.sin(diveRadians);
+const mapDistance = releaseReferenceRange + horizontalTrackingDistance;
+const actionRangeFeet = actionRangeNm * FEET_PER_NM;
+const aod = releaseAltitude / Math.tan(diveRadians) - releaseReferenceRange;
+if (aod <= 0) return { error: "AOD is negative for this profile. Increase release altitude or reduce bomb range." };
+const climbAngle = diveAngle <= 15 ? diveAngle + 5 : diveAngle + 10;
+const climbRadians = climbAngle * Math.PI / 180;
+const angleOff = 2 * climbAngle;
+const turnG = gProfile === "high" ? 5 : 3.5;
+const trackAltitude = releaseAltitude + verticalTrackingDistance;
+const turnRadius = ((releaseSpeed * 1.69) ** 2) / (32.2 * turnG);
+\end{lstlisting}
+
+Later in the same function, the tracking height and radius give the
+pull-down/apex heights and PUP-to-pull-down distance:
+\begin{lstlisting}[numbers=left,firstnumber=436,numberstyle=\tiny,xleftmargin=2em]
+const pullDownAltitude = trackAltitude - turnRadius * (Math.cos(diveRadians) - Math.cos(climbRadians));
+const apexAltitude = pullDownAltitude + turnRadius * (1 - Math.cos(climbRadians));
+const popToPullDownDistance = (pullDownAltitude - ingressAltitude) / Math.tan(climbRadians);
+if (popToPullDownDistance <= 0) return { error: "Ingress altitude is above the computed pull-down altitude." };
+\end{lstlisting}
+
+\subsection{Recovery height and clearance}\label{subsec:popup-recovery}
+\subsubsection*{Values}
+\texttt{ALTLOSS}, \texttt{GNDC} and \texttt{MRA}, in whole feet.
+\texttt{GNDC} is AGL; \texttt{MRA} is shown in AGL and MSL.
+Support values show \texttt{DELAY LOSS}, \texttt{PULL LOSS},
+\texttt{PULL RADIUS}, \texttt{MRA BUFFER}, and the recovery G/delay.
+
+\subsubsection*{Formulas}
+\begin{align*}
+ t_d&=t_s+\tau_d,& R_r&=\frac{(c_VV)^2}{g_TG_r},\\
+ \Delta H_d&=c_VV\sin\delta\,t_d,&
+ \Delta H_r&=R_r(1-\cos\delta),\\
+ \Delta H&=\Delta H_d+\Delta H_r,&
+ H_{\rm clear}&=H-\Delta H,&
+ H_{\rm MRA}&=\Delta H+H_b.
+\end{align*}
+
+\subsubsection*{Variables}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item $H,V,\delta,t_s$: release height (ft AGL), release TAS (knots),
+dive angle and ripple duration (s), from section~\ref{subsec:popup-profile}.
+\item $\tau_d=2$ s: fixed delay after the last release; $t_d$:
+total delay from the first release to the recovery pull.
+\item $G_r=5$: fixed recovery G value, independent of the selected
+turn profile. $R_r$ is the recovery pull radius in ft.
+$c_V=1.68781$ ft/s per knot and $g_T=32.2$ ft/s$^2$ retain the
+application constants above.
+\item $\Delta H_d,\Delta H_r,\Delta H$: height lost during the delay,
+during the pull to level, and their sum, in ft.
+\item $H_{\rm clear}$: remaining height above ground after recovery,
+in ft; $H_{\rm MRA}$: release height needed by this model to leave
+the buffer $H_b=120$ ft. MSL conversion follows
+section~\ref{subsec:terrain}.
+\end{itemize}
+
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $H,V,\delta$ come from the same DTC pop-up input controls
+as above; $t_s$ is computed from pulse count and spacing in
+\path{templates/dtc_popup.js:computePopupPlan}.
+\item $\tau_d,G_r,g_T$ are fixed literals in \texttt{computePopupPlan}.
+$H_b$ is \texttt{POPUP\_MRA\_BUFFER\_FEET}, and $c_V$ is
+\texttt{FEET\_PER\_KNOT\_SECOND}, both declared in
+\path{templates/dtc.html}. These parameters are not selected
+from aircraft-specific recovery tables.
+\item $\Delta H,H_{\rm clear},H_{\rm MRA}$ are computed by
+\texttt{computePopupPlan}; \texttt{formatPopupOutput} and
+\texttt{formatPopupBriefing} display them.
+The arithmetic assumes a common ground reference through the recovery;
+it does not sample terrain along a recovery path.
+\end{itemize}
+
+\subsubsection*{Example}
+For the same \path{tests/popup_briefing.test.cjs} fixture:
+\begin{align*}
+ t_d&=0.11795852+2=2.11795852\ {\rm s},\\
+ R_r&=\frac{(1.68781\cdot520)^2}{32.2\cdot5}=4784.40486\ {\rm ft},\\
+ \Delta H_d&=1.68781\cdot520\sin15^\circ\cdot2.11795852
+              =481.10579\ {\rm ft},\\
+ \Delta H_r&=4784.40486(1-\cos15^\circ)=163.02464\ {\rm ft}.
+\end{align*}
+Hence $\Delta H=644.13043$ ft,
+$H_{\rm clear}=2000-644.13043=1355.86957$ ft and
+$H_{\rm MRA}=644.13043+120=764.13043$ ft.
+The briefing displays \texttt{ALTLOSS 644 ft},
+\texttt{GNDC 1356 ft AGL}, and \texttt{MRA 764 ft AGL}
+(with MSL pending in this fixture).
+
+\subsubsection*{Code}
+\path{templates/dtc_popup.js}, \texttt{computePopupPlan}, delay and
+pull contributions:
+\begin{lstlisting}[numbers=left,firstnumber=428,numberstyle=\tiny,xleftmargin=2em]
+const recoveryPullDelay = stickDuration + 2;
+const recoveryPullG = 5;
+const releaseSpeedFps = releaseSpeed * FEET_PER_KNOT_SECOND;
+const recoveryDelayAltitudeLoss = releaseSpeedFps * Math.sin(diveRadians) * recoveryPullDelay;
+const recoveryPullRadius = (releaseSpeedFps ** 2) / (32.2 * recoveryPullG);
+const recoveryPullAltitudeLoss = recoveryPullRadius * (1 - Math.cos(diveRadians));
+const recoveryAltitudeLoss = recoveryDelayAltitudeLoss + recoveryPullAltitudeLoss;
+const recoveryGroundClearance = releaseAltitude - recoveryAltitudeLoss;
+\end{lstlisting}
+
+The same function adds the buffer when returning the plan values:
+\begin{lstlisting}[numbers=left,firstnumber=533,numberstyle=\tiny,xleftmargin=2em]
+recoveryMraAltitude: recoveryAltitudeLoss + POPUP_MRA_BUFFER_FEET,
+recoveryMraBuffer: POPUP_MRA_BUFFER_FEET,
+\end{lstlisting}
+
+\subsection{Map points, turn and navigation offsets}\label{subsec:popup-map}
+\subsubsection*{Values}
+The map shows action, PUP, pull-down, MAP, target and OA1 points
+and the connecting turn. \texttt{POP BRG}/\texttt{POP RNG} give the
+PUP-to-target bearing and range (degrees to one decimal, NM to one
+decimal). Support values show point-to-point distances, headings,
+and \texttt{PUP OFFSET}/\texttt{OA1 OFFSET} bearing/range pairs
+(true degrees to one decimal and whole feet). The action-point tooltip
+also shows the \texttt{Offset} angle between ingress and the leg to PDP.
+
+\subsubsection*{Formulas}
+The entered heading determines either $\theta_A$ or $\theta_I$;
+the other follows from the selected side:
+\[
+ \theta_I=(\theta_A-\eta\Omega)\bmod360^\circ,\qquad
+ \theta_A=(\theta_I+\eta\Omega)\bmod360^\circ.
+\]
+Construct the action point, MAP, release point and aim-off point:
+\begin{align*}
+ \mathbf P&=\mathbf T-d_A\mathbf e(\theta_I),&
+ \mathbf M&=\mathbf T-MAP\,\mathbf e(\theta_A),\\
+ \mathbf X&=\mathbf T-B_r\mathbf e(\theta_A),&
+ \mathbf O&=\mathbf T+AOD\,\mathbf e(\theta_A).
+\end{align*}
+For the circle tangent to the attack heading at MAP:
+\[
+ \mathbf C=\mathbf M+\eta R\mathbf n(\theta_A),\qquad
+ \mathbf v=\mathbf P-\mathbf C,\qquad
+ \mathbf Q_\pm=\mathbf C+\frac{R^2}{\|\mathbf v\|^2}\mathbf v
+       \ \pm\frac{R\sqrt{\|\mathbf v\|^2-R^2}}{\|\mathbf v\|^2}J\mathbf v.
+\]
+The selected pull-down point $\mathbf Q$ is the candidate whose
+computed arc endpoint is closest to $\mathbf M$. Then
+\[
+ \mathbf U=\mathbf Q-d_{\rm pop}\mathbf e(\theta_o),\qquad
+ D_{\rm POP}=\frac{\|\mathbf T-\mathbf U\|}{c_N},\qquad
+ \omega=\min(\alpha,360^\circ-\alpha).
+\]
+Bearings and the remaining straight-line distances use the formulas
+in section~\ref{subsec:offset-geometry}; magnetic display uses
+section~\ref{subsec:magnetic-headings}.
+
+\subsubsection*{Variables}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\interlinepenalty=10000
+\item All bold point vectors are $(N,E)$ in feet.
+$\mathbf S,\mathbf T$: selected reference steerpoint and target.
+$\mathbf P,\mathbf M,\mathbf X,\mathbf O,\mathbf Q,\mathbf U$:
+action, MAP, first release, OA1, pull-down (PDP), and PUP positions.
+\item $\theta_A,\theta_I,\theta_o$: true attack, ingress and
+action-to-PDP headings, in degrees.
+$\eta=+1$ for a right turn and $-1$ for a left turn.
+$\Omega$ is the angle-off from section~\ref{subsec:popup-profile}.
+\item $\mathbf e(\theta)=(\cos\theta,\sin\theta)$: forward unit vector;
+$\mathbf n(\theta)=(-\sin\theta,\cos\theta)$: right unit normal.
+The arguments are converted to radians for evaluation.
+\item $d_A=c_Nr_A$: action-to-target distance in ft, from entered
+range $r_A$ in NM; $c_N=6076.12$ ft/NM is \texttt{FEET\_PER\_NM}.
+$MAP,B_r,AOD,R,d_{\rm pop}$ are the distances/radius from
+section~\ref{subsec:popup-profile}, in ft.
+\item $\mathbf C$: turn-circle centre at MAP; $\mathbf v$: vector
+from that centre to the action point.
+$J(v_N,v_E)=(v_E,-v_N)$ is a quarter-turn operator.
+$\|\cdot\|$ is Euclidean length. The two tangent candidates
+$\mathbf Q_+,\mathbf Q_-$ require $\|\mathbf v\|>R$.
+\item $j\in\{+,-\}$: tangent-candidate index. For each candidate,
+$\theta_j$ is the true bearing from $\mathbf P$ to $\mathbf Q_j$,
+rounded to $0.1^\circ$ by \texttt{bearingRangeBetween}.
+The arc is reconstructed from that rounded heading:
+\begin{align*}
+ \mathbf C_j&=\mathbf Q_j+\eta R\mathbf n(\theta_j),\\
+ \psi_j&=\eta\bigl[(\eta(\theta_A-\theta_j))\bmod360^\circ\bigr],\\
+ \mathbf A_j&=\mathbf C_j+\mathcal R_{\psi_j}(\mathbf Q_j-\mathbf C_j).
+\end{align*}
+$\mathbf C_j$ is the reconstructed centre, $\psi_j$ the signed
+turn angle, and $\mathbf A_j$ the arc endpoint.
+The rotation is
+$\mathcal R_\psi(N,E)=(N\cos\psi-E\sin\psi,\,
+N\sin\psi+E\cos\psi)$.
+For $|\psi_j|<0.1^\circ$, the code returns $\mathbf A_j=\mathbf Q_j$.
+\item $j_*=\arg\min_{j\in\{+,-\}}\|\mathbf A_j-\mathbf M\|$:
+chosen candidate; $\mathbf Q=\mathbf Q_{j_*}$ and
+$\theta_o=\theta_{j_*}$. This is an endpoint-error comparison;
+the code applies no maximum-error threshold.
+\item $\alpha=(\theta_o-\theta_I)\bmod360^\circ$:
+wrapped difference between the offset-leg and ingress headings.
+$\omega$ is the smaller angle between them, displayed as \texttt{Offset}.
+\item $D_{\rm POP}$: PUP-to-target range in NM.
+The PUP and OA1 offset rows are measured from $\mathbf S$ to
+$\mathbf U$ and $\mathbf O$, respectively.
+\end{itemize}
+
+\subsubsection*{Data}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\item $\mathbf S$ is read from the selected
+\texttt{[STPT].target\_k} in the loaded \path{<callsign/save>.ini},
+through \texttt{getBmsCoordForStpt} in \path{templates/dtc.html}.
+VRP mode uses $\mathbf T=\mathbf S$.
+VIP mode projects $\mathbf T$ from $\mathbf S$ using the
+\texttt{VIP} bearing/range in \texttt{[NAV OFFSETS]} or its edited
+DTC fields, as in section~\ref{subsec:offset-geometry}.
+\item $r_A,\eta$ and the entered heading come from
+\texttt{actionRangeNm}, \texttt{side} and \texttt{heading};
+\texttt{headingMode} selects attack or ingress. These are controls
+in \path{templates/dtc.html}. The entered heading is converted
+to true using the selected point's variation as described in
+section~\ref{subsec:magnetic-headings}. $c_N$ is declared in
+\path{templates/dtc.html}.
+\item $\mathbf C,\mathbf Q_\pm,\theta_j,\mathbf A_j,j_*$ are computed by
+\texttt{getTurnCenterAtFinalPoint}, \texttt{getCircleTangentsFromPoint},
+\texttt{bearingRangeBetween}, \texttt{buildTurnArcCoords} and
+\texttt{solvePopupTurnGeometry} in \path{templates/dtc.html}.
+The chosen tangent need not land exactly at MAP after heading rounding.
+\item $\mathbf P,\mathbf M,\mathbf X,\mathbf O,\mathbf U$ and their
+bearing/range pairs are computed by
+\path{templates/dtc_popup.js:computePopupPlan}. Missing target data,
+no tangent, or $d_{\rm pop}>\|\mathbf Q-\mathbf P\|$ rejects the plan.
+\texttt{applyPopupPlan} writes the computed offsets into the selected
+\texttt{OA1} row and \texttt{VIPPUP}/\texttt{VRPPUP}.
+\item $D_{\rm POP}$ and the displayed point distances use unrounded
+coordinates; bearings first pass through the $0.1^\circ$ DTC
+formatter. The support offset rows retain true bearings, while
+the pop-up heading labels apply the magnetic conversion.
+\end{itemize}
+
+\subsubsection*{Example}
+The same \path{tests/popup_briefing.test.cjs} fixture supplies the
+synthetic reference $\mathbf S=(100000,100000)$ ft, VRP mode,
+$r_A=4.5$ NM, a right turn and attack heading $130^\circ$ magnetic.
+Its mocked variation is $-8^\circ$, giving
+$\theta_A=122^\circ$, $\theta_I=82^\circ$ and $d_A=27342.54$ ft.
+Together with the profile above:
+\[
+ \mathbf P=(96194.65,72923.56),\qquad
+ \mathbf M=(104802.05,92315.11),\qquad
+ \mathbf C=(98990.71,88683.78)\ {\rm ft}.
+\]
+The candidate arc endpoint errors are 13705.23 ft and 1.02 ft.
+The second candidate is selected:
+\[
+ \mathbf Q=(104575.87,84713.36)\ {\rm ft},\qquad
+ \theta_o=54.6^\circ,\qquad
+ \mathbf U=(100664.63,79209.71)\ {\rm ft}.
+\]
+The briefing shows \texttt{POP BRG 99.8 deg M} and
+\texttt{POP RNG 3.4 NM}; the action-point \texttt{Offset} is
+$\omega=|54.6-82|=27.4^\circ$. Support offsets are
+\texttt{PUP BRG 271.8 / RNG 20801 ft} and
+\texttt{OA1 BRG 122 / RNG 2647 ft}, both true.
+These coordinates and variation are test inputs, not BMS-file samples.
+
+\subsubsection*{Code}
+\path{templates/dtc.html}, \texttt{getTurnCenterAtFinalPoint},
+the right-normal construction of $\mathbf C$:
+\begin{lstlisting}[numbers=left,firstnumber=816,numberstyle=\tiny,xleftmargin=2em]
+const radians = normalizeBearing(finalHeading) * Math.PI / 180;
+const rightNormal = {
+  northFeet: -Math.sin(radians),
+  eastFeet: Math.cos(radians),
+};
+return turnDirection === "left"
+  ? {
+    northFeet: finalCoord.northFeet - rightNormal.northFeet * radiusFeet,
+    eastFeet: finalCoord.eastFeet - rightNormal.eastFeet * radiusFeet,
+  }
+  : {
+    northFeet: finalCoord.northFeet + rightNormal.northFeet * radiusFeet,
+    eastFeet: finalCoord.eastFeet + rightNormal.eastFeet * radiusFeet,
+  };
+\end{lstlisting}
+
+The same file's \texttt{getCircleTangentsFromPoint} produces
+$\mathbf Q_\pm$; \texttt{solvePopupTurnGeometry} ranks the resulting
+arc endpoints. Here \texttt{dx} is east and \texttt{dy} is north:
+\begin{lstlisting}[numbers=left,firstnumber=832,numberstyle=\tiny,xleftmargin=2em]
+function getCircleTangentsFromPoint(pointCoord, centerCoord, radiusFeet) {
+  if (!pointCoord || !centerCoord || !Number.isFinite(radiusFeet) || radiusFeet <= 0) return [];
+  const dx = pointCoord.eastFeet - centerCoord.eastFeet;
+  const dy = pointCoord.northFeet - centerCoord.northFeet;
+  const distanceSquared = dx * dx + dy * dy;
+  if (distanceSquared <= radiusFeet * radiusFeet) return [];
+  const root = Math.sqrt(distanceSquared - radiusFeet * radiusFeet);
+  return [1, -1].map((sign) => {
+    const eastFeet = centerCoord.eastFeet + (radiusFeet * radiusFeet * dx + sign * radiusFeet * root * -dy) / distanceSquared;
+    const northFeet = centerCoord.northFeet + (radiusFeet * radiusFeet * dy + sign * radiusFeet * root * dx) / distanceSquared;
+    return { northFeet, eastFeet };
+  });
+}
+
+function solvePopupTurnGeometry(actionCoord, mapCoord, attackHeading, turnRadius, turnDirection) {
+  const centerCoord = getTurnCenterAtFinalPoint(mapCoord, attackHeading, turnRadius, turnDirection);
+  if (!centerCoord) return null;
+  const candidates = getCircleTangentsFromPoint(actionCoord, centerCoord, turnRadius)
+    .map((pdpCoord) => {
+      const offsetLegMetrics = bearingRangeBetween(actionCoord, pdpCoord);
+      if (!offsetLegMetrics) return null;
+      const offsetLegHeading = Number.parseFloat(offsetLegMetrics.brg);
+      const turnArcCoords = buildTurnArcCoords(pdpCoord, offsetLegHeading, attackHeading, turnRadius, turnDirection);
+      const arcEndCoord = turnArcCoords.length ? turnArcCoords[turnArcCoords.length - 1] : null;
+      return {
+        pdpCoord,
+        offsetLegMetrics,
+        offsetLegHeading,
+        turnArcCoords,
+        errorFeet: coordDistanceFeet(arcEndCoord, mapCoord),
+      };
+    })
+    .filter((candidate) => candidate && Number.isFinite(candidate.errorFeet));
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => a.errorFeet - b.errorFeet);
+  return candidates[0];
+}
+\end{lstlisting}
+
+\texttt{buildTurnArcCoords} in the same file reconstructs the circle
+from the rounded starting heading and rotates the initial radius.
+At \texttt{index === steps}, the appended point is $\mathbf A_j$;
+\texttt{getTurnDelta} computes $\psi_j$:
+\begin{lstlisting}[numbers=left,firstnumber=778,numberstyle=\tiny,xleftmargin=2em]
+const turnDelta = getTurnDelta(startHeading, endHeading, turnDirection);
+if (!Number.isFinite(turnDelta) || Math.abs(turnDelta) < 0.1) return [startCoord];
+const startRadians = normalizeBearing(startHeading) * Math.PI / 180;
+const rightNormal = {
+  northFeet: -Math.sin(startRadians),
+  eastFeet: Math.cos(startRadians),
+};
+const centerCoord = turnDelta >= 0
+  ? {
+    northFeet: startCoord.northFeet + rightNormal.northFeet * radiusFeet,
+    eastFeet: startCoord.eastFeet + rightNormal.eastFeet * radiusFeet,
+  }
+  : {
+    northFeet: startCoord.northFeet - rightNormal.northFeet * radiusFeet,
+    eastFeet: startCoord.eastFeet - rightNormal.eastFeet * radiusFeet,
+  };
+const relative = {
+  northFeet: startCoord.northFeet - centerCoord.northFeet,
+  eastFeet: startCoord.eastFeet - centerCoord.eastFeet,
+};
+const steps = Math.max(8, Math.ceil(Math.abs(turnDelta) / 6));
+const points = [];
+for (let index = 0; index <= steps; index += 1) {
+  const radians = (turnDelta * index / steps) * Math.PI / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const eastFeet = relative.eastFeet * cos + relative.northFeet * sin;
+  const northFeet = -relative.eastFeet * sin + relative.northFeet * cos;
+  points.push({
+    northFeet: centerCoord.northFeet + northFeet,
+    eastFeet: centerCoord.eastFeet + eastFeet,
+  });
+\end{lstlisting}
+
+\path{templates/dtc_popup.js}, \texttt{computePopupPlan}, converts
+the entered heading, constructs the points, and measures the offsets.
+\texttt{offsetLegHeading} is the selected rounded $\theta_o$:
+\begin{lstlisting}[numbers=left,firstnumber=441,numberstyle=\tiny,xleftmargin=2em]
+const magneticVariation = getPopupMagneticVariation();
+// Convert the pilot's heading once; geometry and DTC offset rows stay true.
+const trueHeading = normalizeBearing(heading + (magneticVariation ?? 0));
+let attackHeading;
+let ingressHeading;
+if (headingMode === "attack") {
+  attackHeading = trueHeading;
+  ingressHeading = normalizeBearing(attackHeading + (side === "right" ? -angleOff : angleOff));
+} else {
+  ingressHeading = trueHeading;
+  attackHeading = normalizeBearing(ingressHeading + (side === "right" ? angleOff : -angleOff));
+}
+
+const turnDirection = side === "left" ? "left" : "right";
+const actionCoord = projectBearingRange(targetCoord, ingressHeading + 180, actionRangeFeet);
+const mapCoord = projectBearingRange(targetCoord, attackHeading + 180, mapDistance);
+const releaseCoord = projectBearingRange(targetCoord, attackHeading + 180, releaseReferenceRange);
+const turnGeometry = solvePopupTurnGeometry(actionCoord, mapCoord, attackHeading, turnRadius, turnDirection);
+if (!turnGeometry) return { error: "Could not solve action-to-MAP turn geometry." };
+const pdpCoord = turnGeometry.pdpCoord;
+const offsetLegMetrics = turnGeometry.offsetLegMetrics;
+const offsetLegHeading = turnGeometry.offsetLegHeading;
+const offsetLegDistance = coordDistanceFeet(actionCoord, pdpCoord);
+if (popToPullDownDistance > offsetLegDistance) {
+  return { error: "PUP would fall before the action point. Increase action range or adjust the vertical profile." };
+}
+const pupCoord = projectBearingRange(pdpCoord, offsetLegHeading + 180, popToPullDownDistance);
+const oaCoord = projectBearingRange(targetCoord, attackHeading, aod);
+if (!actionCoord || !pdpCoord || !pupCoord || !oaCoord) return { error: "Could not compute pop-up geometry." };
+const turnArcCoords = turnGeometry.turnArcCoords;
+const rolloutCoord = mapCoord;
+
+const pupMetrics = bearingRangeBetween(selectedCoord, pupCoord);
+const oaMetrics = bearingRangeBetween(selectedCoord, oaCoord);
+if (!pupMetrics || !oaMetrics) return { error: "Could not compute NAV offset rows." };
+const ingressToOffset = Math.abs(normalizeBearing(offsetLegHeading - ingressHeading));
+const offsetAngle = ingressToOffset > 180 ? 360 - ingressToOffset : ingressToOffset;
+\end{lstlisting}
+
+\begin{thebibliography}{5}
+\bibitem{meeus1991}
+Jean Meeus, \emph{Astronomical Algorithms}, Willmann--Bell, 1991.
+\bibitem{ussa1976}
+NOAA, NASA and U.S. Air Force, \emph{U.S. Standard Atmosphere, 1976},
+NASA-TM-X-74335, 1976, Part~1.
+\url{https://ntrs.nasa.gov/citations/19770009539}.
+\bibitem{aiken1946}
+William S. Aiken, Jr., \emph{Standard Nomenclature for Airspeeds with
+Tables and Charts for Use in Calculation of Airspeed},
+NACA Report~837, 1946.
+\url{https://ntrs.nasa.gov/api/citations/19930091914/downloads/19930091914.pdf}.
+\bibitem{how2004}
+Jonathan P. How, \emph{Aircraft Stability and Control},
+MIT OpenCourseWare 16.333, Fall 2004, Lecture~1:
+Equilibrium States, Aircraft Performance, Introduction to Basic Terms.
+\url{https://ocw.mit.edu/courses/16-333-aircraft-stability-and-control-fall-2004/9befd7ea465e31f9ff763c5587815264_lecture_1.pdf}.
+\bibitem{oakdesign_converter}
+oakdesign, \emph{Falcon BMS Tacview Converter}, software repository,
+\path{src/utils/coordinate_converter.py}
+(\texttt{create\_proj\_string} and \texttt{CoordinateConverter}).
+\url{https://github.com/oakdesign/falcon-bms-tacview-converter/}.
+\end{thebibliography}
+\end{document}
