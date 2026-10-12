@@ -721,8 +721,10 @@ class Callsign_ini:
         precision_steerpoints = [s for s in self.steerpoints if getattr(s, "action") == "-1"]
         precision_steerpoints_indices: list[int] = [getattr(s, "number") - 1 for s in precision_steerpoints]
 
-        first_landing = next(getattr(s, "number") for s in self.steerpoints if getattr(s, "action") == "7")
-        after_landing_index = first_landing # The number of the first landing is also the index of its successor
+        try:
+            first_landing = next(getattr(s, "number") for s in self.steerpoints if getattr(s, "action") == "7")
+        except:
+            return
 
         for s in precision_steerpoints:
             if getattr(s, "number") > first_landing:
@@ -730,6 +732,8 @@ class Callsign_ini:
                     self.steerpoints.remove(s)
                 except:
                     pass
+
+        after_landing_index = first_landing # The number of the first landing is also the index of its successor
 
         try:
             for line in file_contents:
