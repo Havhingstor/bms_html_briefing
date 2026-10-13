@@ -712,40 +712,48 @@ class Callsign_ini:
         """
         Converts all precision steerpoints after the first landing to target steerpoints.
         They're not displayed in the flight plan map anyways, so they should be viewed as target steerpoints.
-        OAPs etc. can still be attached
+        OAPs etc. can still be attached.
+        Target Steerpoints (with or without action "precision") before the first landing are kept in both lists and marked as "also_in_flightplan" in the target list
         """
 
         if file_contents == None:
             return
 
-        precision_steerpoints = [s for s in self.steerpoints if getattr(s, "action") == "-1"]
-        precision_steerpoints_indices: list[int] = [getattr(s, "number") - 1 for s in precision_steerpoints]
-
-        try:
-            first_landing = next(getattr(s, "number") for s in self.steerpoints if getattr(s, "action") == "7")
-        except:
-            return
-
-        for s in precision_steerpoints:
-            if getattr(s, "number") > first_landing:
-                try:
-                    self.steerpoints.remove(s)
-                except:
-                    pass
-
+        first_landing: int = next((getattr(s, "number") for s in self.steerpoints if getattr(s, "action") == "7"), len(self.steerpoints) + 1)
         after_landing_index = first_landing # The number of the first landing is also the index of its successor
 
-        try:
-            for line in file_contents:
-                index = _target_index(line)
-                if index in precision_steerpoints_indices and _line_last_value(line) != "Not set":
-                    is_in_fp = index < after_landing_index if isinstance(after_landing_index, int) else True
-                    self.tgtsteerpoints.append(self.TgtSteerpoint(line, is_in_fp))
+        with_indices = [(l, _target_index(l)) for l in file_contents]
+        targets_lines_below_25 = [(l, index + 1) for (l, index) in with_indices if isinstance(index, int) and 0 <= index < 24 and _line_last_value(l) != "Not set"]
 
-            self.tgtsteerpoints.sort(key=lambda stp: getattr(stp, "number"))
-        except Exception as e:
-            logger.warning(f"Error reading target steerpoints: {e}")
-            return
+        to_delete = []
+        to_add = []
+
+        action_blocklist = ["1", "7"]
+        for line, number in targets_lines_below_25:
+            sp = next((sp for sp in self.steerpoints if getattr(sp, "number") == number), None)
+            if sp == None:
+                continue
+            action = getattr(sp, "action")
+            if action in action_blocklist:
+                continue
+            if number <= first_landing:
+                # Before the first landing: We keep any target in both lists, and mark the target list entry
+                to_add.append((line, True))
+            elif action == "-1":
+                # After the first landing: We only keep targets with action "Precision", but remove them from the flight plan list
+                to_add.append((line, False))
+                to_delete.append(sp)
+
+        for sp in to_delete:
+            self.steerpoints.remove(sp)
+
+        for line, is_in_fp in to_add:
+            try:
+                self.tgtsteerpoints.append(self.TgtSteerpoint(line, is_in_fp))
+            except:
+                pass
+
+        self.tgtsteerpoints.sort(key=lambda stp: getattr(stp, "number"))
 
 
     def fill_cmds(self, file_contents = None):
