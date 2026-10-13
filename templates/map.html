@@ -921,6 +921,9 @@ let stptIniCoords = [{% for point in stpt_coords %}
 let stptIniIsAlternate = [{% for point in stpt_coords %}
                {{ point.is_alternate|default(false)|tojson }},
                {% endfor %}]
+let stptIniIsInTargets = [{% for point in stpt_coords %}
+               {{ point.also_in_targets|default(false)|tojson }},
+               {% endfor %}]
 let stptIniActions = [{% for point in stpt_coords %}
                {{ point.action|default("")|tojson }},
                {% endfor %}]
@@ -1008,8 +1011,7 @@ function getFlightPointEntries() {
         .filter((entry) => {
             if (!validLatLng(entry.latlng) || entry.index <= 0 || entry.index >= routeEndExclusiveIndex) return false;
             if (alternateIndex < 0 && entry.index === routeEndIndex) return false;
-            const number = entry.index + 1;
-            if (targets.find(sp => sp.number == number) != undefined) return false;
+            if (stptIniIsInTargets[entry.index]) return false;
             return true;
         });
 }

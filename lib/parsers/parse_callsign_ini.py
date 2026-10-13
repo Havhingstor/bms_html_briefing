@@ -429,6 +429,8 @@ class Callsign_ini:
                 else:
                     logger.warning(f"No function to find {type(self).__name__}.{attr}")
 
+            setattr(self, "also_in_targets", False)
+
         def init_number(self, line_contents):
             index = _line_index(line_contents, "target_")
             if index == "":
@@ -713,14 +715,14 @@ class Callsign_ini:
         Converts all precision steerpoints after the first landing to target steerpoints.
         They're not displayed in the flight plan map anyways, so they should be viewed as target steerpoints.
         OAPs etc. can still be attached.
-        Target Steerpoints (with or without action "precision") before the first landing are kept in both lists and marked as "also_in_flightplan" in the target list
+        Target Steerpoints (with or without action "precision") before the first landing are kept in both lists and marked
+        as "also_in_flightplan" in the target list / "also_in_targets" in the steerpoint list.
         """
 
         if file_contents == None:
             return
 
         first_landing: int = next((getattr(s, "number") for s in self.steerpoints if getattr(s, "action") == "7"), len(self.steerpoints) + 1)
-        after_landing_index = first_landing # The number of the first landing is also the index of its successor
 
         with_indices = [(l, _target_index(l)) for l in file_contents]
         targets_lines_below_25 = [(l, index + 1) for (l, index) in with_indices if isinstance(index, int) and 0 <= index < 24 and _line_last_value(l) != "Not set"]
@@ -737,8 +739,9 @@ class Callsign_ini:
             if action in action_blocklist:
                 continue
             if number <= first_landing:
-                # Before the first landing: We keep any target in both lists, and mark the target list entry
+                # Before the first landing: We keep any target in both lists, and mark both list entries
                 to_add.append((line, True))
+                setattr(sp, "also_in_targets", True)
             elif action == "-1":
                 # After the first landing: We only keep targets with action "Precision", but remove them from the flight plan list
                 to_add.append((line, False))
