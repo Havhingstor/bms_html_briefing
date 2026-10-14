@@ -28,41 +28,56 @@
         <colgroup>
             {% if logo_present %}<col style="width:12%;">{% endif %}
             <col style="width:{% if logo_present %}14%{% else %}16%{% endif %};">
-            <col style="width:{% if logo_present %}44%{% else %}52%{% endif %};">
-            <col style="width:{% if logo_present %}16%{% else %}17%{% endif %};">
+            <col style="width:{% if logo_present %}46%{% else %}54%{% endif %};">
+            <col style="width:{% if logo_present %}14%{% else %}15%{% endif %};">
             <col style="width:{% if logo_present %}14%{% else %}15%{% endif %};">
         </colgroup>
         <tr>
 	    {% if logo_present %}<th rowspan="6" class="roster-logo-cell" style="vertical-align: middle; text-align: center;"> <img class="roster-logo" src="assets/logo.png" width="100%"></th>{% endif %}
             <th></th>
             <th>Name</th>
-            <th>TCN <button title="Restore default TACAN channels" class="refreshButton" onclick='restoreDefaultAtId("tcn")'>⟳</button></th>
+            <th>TCN <button title="Restore default TACAN channels" class="refreshButton" onclick='restoreDefaultAtId("tcn")'>⟳</button> <button title="Set TACAN channels to match AI wingmen" class="refreshButton" onclick='setAI()'>AI</button></th>
             <th>LSR <button title="Restore default laser codes" class="refreshButton" onclick='restoreDefaultAtId("lsr")'>⟳</button></th>
         </tr>
+        <script>
+            function setAI() {
+                if (typeof _setAI === "function") {
+                    _setAI();
+                }
+            }
+        </script>
       {% for i in range(package_size) %}
       {% if package[i].roster.own %}
+        <script>
+            function _setAI() {
+                document.querySelector("#roster_lead_2").innerHTML = '{{i+12}}Y';
+                document.querySelector("#roster_2wing_2").innerHTML = '{{i+22}}Y';
+                document.querySelector("#roster_3elmnt_2").innerHTML = '{{i+12+63}}Y';
+                document.querySelector("#roster_4wing_2").innerHTML = '{{i+22+63}}Y';
+            }
+        </script>
         <tr>
 	    <td>1 Lead</td>
             <td id="roster_lead_1">{% if package[i].roster.lead != "Unassigned" %} {{ package[i].roster.lead }} {% endif %}</td>
-	    <td contenteditable="true" class="editable tcn" id="roster_lead_2">{{i+15}}X (AI: {{i+12}}Y)</td>
+	    <td contenteditable="true" class="editable tcn" id="roster_lead_2">{{i+15}}X</td>
 	    <td contenteditable="true" class="editable lsr" id="roster_lead_3">{% if package[i].roster.lead_laser != None %} {{ package[i].roster.lead_laser }} {% endif %}</td>
         </tr>
 	<tr>
 	    <td>2 Wing</td>
             <td id="roster_2wing_1">{% if package[i].roster.wing != "Unassigned" %} {{ package[i].roster.wing }} {% endif %}</td>
-	    <td contenteditable="true" class="editable tcn" id="roster_2wing_2">{{i+15+63}}X (AI: {{i+22}}Y)</td>
+	    <td contenteditable="true" class="editable tcn" id="roster_2wing_2">{{i+15+63}}X</td>
 	    <td contenteditable="true" class="editable lsr" id="roster_2wing_3">{% if package[i].roster.wing_laser != None %} {{ package[i].roster.wing_laser }} {% endif %}</td>
 	</tr>
         <tr>
 	    <td>3 Element</td>
 	    <td id="roster_3elmnt_1">{% if package[i].roster.element != "Unassigned" %} {{ package[i].roster.element }} {% endif %}</td>
-	    <td contenteditable="true" class="editable tcn" id="roster_3elmnt_2">{{i+15+63}}Y (AI: {{i+12+63}}Y)</td>
+	    <td contenteditable="true" class="editable tcn" id="roster_3elmnt_2">{{i+15+63}}Y</td>
 	    <td contenteditable="true" class="editable lsr" id="roster_3elmnt_3">{% if package[i].roster.element_laser != None %} {{ package[i].roster.element_laser }} {% endif %}</td>
 	</tr>
 	<tr>
 	    <td>4 Wing</td>
             <td id="roster_4wing_1">{% if package[i].roster.four != "Unassigned" %} {{ package[i].roster.four }} {% endif %}</td>
-	    <td contenteditable="true" class="editable tcn" id="roster_4wing_2">{{i+15}}Y (AI: {{i+22+63}}Y)</td>
+	    <td contenteditable="true" class="editable tcn" id="roster_4wing_2">{{i+15}}Y</td>
 	    <td contenteditable="true" class="editable lsr" id="roster_4wing_3">{% if package[i].roster.four_laser != None %} {{ package[i].roster.four_laser }} {% endif %}</td>
 	</tr>
 	{% endif %}
