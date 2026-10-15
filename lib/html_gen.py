@@ -143,7 +143,11 @@ def _load_laser_codes(brf: Briefing, brief_summary: dict | None):
     packages = brief_summary["packages"]
     if packages is None:
         return
-    our_num  = int(getattr(brf.overview, "package_id"))
+    try:
+        our_num  = int(getattr(brf.overview, "package_id"))
+    except:
+        logger.warning(f"Cannot load laser codes because package ID isn't set in briefing")
+        return
     for package in packages:
         package_number = package["package_number"]
         if our_num != package_number:
@@ -152,7 +156,10 @@ def _load_laser_codes(brf: Briefing, brief_summary: dict | None):
             flight_num_json = flight_json["flight_number"]
             laser_codes = flight_json['laser_codes']
             for flight_brf in brf.package:
-                flight_num_brf = int(getattr(flight_brf, "flight"))
+                try:
+                    flight_num_brf = int(getattr(flight_brf, "flight"))
+                except:
+                    continue
                 if flight_num_json != flight_num_brf:
                     continue
                 roster = flight_brf.roster
