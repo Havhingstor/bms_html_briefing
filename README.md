@@ -57,10 +57,11 @@ Replace ```assets/logo.png``` with your own logo (appears in the flight roster s
 [system]
 output_dir = output
 pdf_output_dir = kneeboards
-wine_prefix =
+wine_prefix = 
 auto_export_on_change = False
 auto_export_pdf_only = False
 debug_log = False
+map = esri_imagery_hybrid
 briefing_scroll_mode = continuous
 
 [bms]
@@ -69,9 +70,18 @@ bms_available_versions = 4.37, 4.38
 default_airframe = F-16
 
 [pages]
-# Comma-separated sections per page; edit to reorder or remove panels.
-page1 = package, flightplan
-page2 = roster, admin, weapons, weapon_settings, wpn_targets, cmds, custom_checklist
+charts =
+page1 = atis, airbase, main_package, supporting_package, weather
+page2 = roster, cmds, admin, weapon_settings, custom_checklist
+page3 = flightplan
+page4 = targets, tgtsteerpoints, wpn_targets, delivery, aa_brevity_notes, roe, support
+page5 = map
+page6 = comms
+
+[briefing_style]
+font_size = 16
+spacing = normal
+
 ```
 #### Configuration override
 In case you want to override the auto-detected BMS parameters (for example, if your callsign was read from the registry with some weird characters and the app fails to detect the .ini file), you can add an 'override' section to the config.ini as follows:
