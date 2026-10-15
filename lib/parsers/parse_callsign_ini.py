@@ -756,7 +756,10 @@ class Callsign_ini:
             except:
                 pass
 
-        self.tgtsteerpoints.sort(key=lambda stp: getattr(stp, "number"))
+        try:
+            self.tgtsteerpoints.sort(key=lambda stp: getattr(stp, "number"))
+        except Exception as e:
+            logger.warning(f"Error sorting target steerpoints: {e}")
 
 
     def fill_cmds(self, file_contents = None):
