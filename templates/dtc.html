@@ -72,6 +72,7 @@
             <tr class="dtc-section-gap"><td colspan="5"></td></tr>
             <tr class="dtc-section-row"><th colspan="5">Target steerpoints</th></tr>
             {% for stpt in tgtsteerpoints %}
+            {% if not stpt.also_in_flightplan %}
             <tr data-dtc-map-x="{{ stpt.coord_x }}" data-dtc-map-y="{{ stpt.coord_y }}" data-dtc-map-z="{{ stpt.coord_z }}" data-dtc-label="{{ stpt.name|e }}" data-dtc-stpt-number="{{ stpt.number }}">
               <td class="dtc-stpt-number"><span class="dtc-stpt-number-text">{{ stpt.number }}</span><span class="dtc-stpt-marker" aria-hidden="true"></span></td>
               <td class="dtc-label" title="{{ stpt.name|e }}"><span class="dtc-label-text">{{ stpt.name|e }}</span></td>
@@ -79,6 +80,7 @@
               <td class="dtc-coords dtc-lon" title="Raw Y: {{ stpt.coord_y }}">{{ stpt.coord_y }}</td>
               <td class="dtc-coords dtc-z" title="Raw Z: {{ stpt.coord_z }}">{{ stpt.coord_z }}</td>
             </tr>
+            {% endif %}
             {% else %}
             <tr><td colspan="5">No target steerpoints found</td></tr>
             {% endfor %}
