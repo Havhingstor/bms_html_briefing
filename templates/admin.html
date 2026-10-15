@@ -5,6 +5,7 @@
 </table>
 <div id="admin" class="hidable">
 {% set loadout = admin_data|default({}) %}
+{% set liftoff_tooltip = loadout.get('liftoff_tooltip') or 'Liftoff speed (KCAS).' %}
 {% macro stores(category) -%}
 {{ (loadout.get(category, [])|join(', ') or '—')|e }}
 {%- endmacro %}
@@ -53,8 +54,8 @@
       <tr>
         <th class="header nowrap" scope="row">Tanks</th>
         <td id="admin_tanks">{{ stores('tanks') }}</td>
-        <th class="header nowrap" scope="row" title="Liftoff speed (KCAS).">L/O SPD</th>
-        <td id="admin_liftoff_speed" class="nowrap" title="Liftoff speed (KCAS).">{{ loadout.get('liftoff_speed') or '—' }}</td>
+        <th class="header nowrap" scope="row" title="{{ liftoff_tooltip|e }}">L/O SPD</th>
+        <td id="admin_liftoff_speed" class="nowrap" title="{{ liftoff_tooltip|e }}">{{ loadout.get('liftoff_speed') or '—' }}</td>
         <th class="header nowrap" scope="row">UHF (Tac.)</th>
         <td contenteditable="true" class="editable" id="admin_4"></td>
         <th class="header" scope="row">JAM BANDS</th>

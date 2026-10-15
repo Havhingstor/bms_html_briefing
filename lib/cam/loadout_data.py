@@ -130,7 +130,7 @@ def build_aircraft_members(flight: FlightUnit) -> list[SummaryAircraftMember]:
         member: SummaryAircraftMember = {
             "index": index, "stores": stores, "loaded_cft": None,
             "takeoff_fuel_lb": None, "gross_weight_lb": None,
-            "drag_index": None, "liftoff_speed_kcas": None,
+            "drag_index": None, "liftoff_speed_kcas": None, "liftoff_aoa_deg": None,
         }
         members.append(member)
         if aircraft is None:
@@ -171,6 +171,7 @@ def build_aircraft_members(flight: FlightUnit) -> list[SummaryAircraftMember]:
         if liftoff is not None and member["gross_weight_lb"] is not None:
             try:
                 member["liftoff_speed_kcas"] = liftoff.speed_kcas(member["gross_weight_lb"])
+                member["liftoff_aoa_deg"] = sim.takeoff_pitch_deg
             except (ValueError, TypeError) as exc:
                 logger.debug("Admin liftoff speed unavailable: %s", exc)
     return members
