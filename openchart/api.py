@@ -718,6 +718,7 @@ def _validate_pdf_page_availability(airport: AirportData, kind: ChartKind) -> No
         airport.layout,
         atc=airport.atc,
         magnetic_variation_degrees=airport.magnetic_variation_degrees,
+        objective_heading_degrees=airport.placement.heading,
     ):
         raise UnsupportedAirfieldError(
             f"{airport.name}: no authored parking pages are available",
@@ -751,6 +752,7 @@ def _render_pages(
         runways=context.runways,
         atc=airport.atc,
         magnetic_variation_degrees=airport.magnetic_variation_degrees,
+        objective_heading_degrees=airport.placement.heading,
     )
     return tuple(
         ChartPage(
@@ -795,7 +797,10 @@ def _chart_warnings(
             )
         )
     missing_models: set[int] = set()
+    dimensions_issues: set[str] = set()
     for feature in airport.layout.features:
+        if feature.model_dimensions_issue is not None:
+            dimensions_issues.add(feature.model_dimensions_issue)
         graphics_id = feature.graphics_normal
         if graphics_id is None:
             continue
@@ -811,6 +816,13 @@ def _chart_warnings(
             and find_highest_lod_model(airport.models_dirs, graphics_id) is None
         ):
             missing_models.add(graphics_id)
+    for issue in sorted(dimensions_issues):
+        warnings.append(
+            ChartWarning(
+                "invalid_model_dimensions",
+                f"Optional model dimensions omitted: {issue}",
+            )
+        )
     for graphics_id in sorted(missing_models):
         warnings.append(
             ChartWarning(

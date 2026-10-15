@@ -145,6 +145,7 @@ def main(argv: list[str] | None = None) -> int:
             runways=render_context.runways,
             atc=airport.atc,
             magnetic_variation_degrees=airport.magnetic_variation_degrees,
+            objective_heading_degrees=airport.placement.heading,
         ):
             parking_svg = render_airport_parking_chart_svg(
                 airport,

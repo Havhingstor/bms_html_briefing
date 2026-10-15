@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from functools import lru_cache
 import math
-import re
 
 from .source import (
     ObjectiveFeatureLayout,
@@ -15,8 +14,6 @@ from .source import (
 from .vendor.opencam.support import AtcAirbaseData, AtcRunwayEntry
 
 
-RUNWAY_THRESHOLD_PATTERN = re.compile(r"\bRunway THR\s+([0-9]{2}[LRC]?)\b", re.I)
-RUNWAY_SIGN_PATTERN = re.compile(r"\bRwy Sign Rwy\s*-\s*([0-9]{2}[LRC]?)\b", re.I)
 NUMBERED_PARKING_TYPES = frozenset((11, 12))
 SHELTER_PARKING_TYPE = 16
 ROUTE_HEADER_TYPE = 1
@@ -44,6 +41,8 @@ class RunwayEnd:
 
 @dataclass(frozen=True)
 class RunwayGeometry:
+    """Runway points and axis heading in the unrotated objective layout."""
+
     runway_number: int
     heading_true: float
     start: Point
@@ -57,6 +56,8 @@ class RunwayGeometry:
 
 @dataclass(frozen=True)
 class IlsApproach:
+    """World bearings and a threshold point in the objective's local layout."""
+
     designator: str
     runway_number: int
     course_true: float
@@ -109,36 +110,20 @@ class _HeaderRouteEdges:
     parking_spurs: tuple[tuple[Point, Point], ...]
 
 
-@dataclass
-class _AtcEndCandidate:
-    runway_index: int
-    entry: AtcRunwayEntry
-    threshold: Point
-    suffix: str
-
-
-@dataclass
-class _InferredEndCandidate:
-    runway_index: int
-    qfu: int
-    course_true: float
-    threshold: Point
-    suffix: str = ""
-
-
 def build_runways(
     layout: ObjectiveFeatureLayout,
     atc: AtcAirbaseData | None = None,
     magnetic_variation_degrees: float | None = None,
+    *,
+    objective_heading_degrees: float = 0.0,
 ) -> tuple[RunwayGeometry, ...]:
-    """Build runways from authored PHD/PDX threshold-edge geometry."""
+    """Build local runway geometry with BMS ATC labels for its world placement."""
 
     headers_by_runway: dict[int, list[ObjectivePointHeader]] = {}
     for header in layout.point_headers:
         if header.type_ == 1 and header.feature_dependency_indices:
             headers_by_runway.setdefault(header.runway_number, []).append(header)
 
-    candidates = _runway_designator_candidates(layout)
     runways: list[RunwayGeometry] = []
     for runway_number in sorted(headers_by_runway):
         headers = headers_by_runway[runway_number]
@@ -203,46 +188,6 @@ def build_runways(
                 width * FEET_TO_METERS,
             )
 
-        assigned = _designators_for_runway(
-            candidates,
-            start,
-            end,
-            width=300.0,
-        )
-        runway_ends: list[RunwayEnd] = []
-        for designator, candidate_point in assigned:
-            distance_start = _distance(candidate_point, start)
-            distance_end = _distance(candidate_point, end)
-            runway_ends.append(
-                RunwayEnd(
-                    designator=designator,
-                    point=start if distance_start <= distance_end else end,
-                )
-            )
-        deduplicated_ends = {
-            (item.designator, item.point): item for item in runway_ends
-        }
-        ends = tuple(
-            sorted(
-                deduplicated_ends.values(),
-                key=lambda item: item.designator,
-            )
-        )
-        if len(ends) == 1:
-            known_end = ends[0]
-            opposite_point = end if known_end.point == start else start
-            ends = tuple(
-                sorted(
-                    (
-                        known_end,
-                        RunwayEnd(
-                            _reciprocal_designator(known_end.designator),
-                            opposite_point,
-                        ),
-                    ),
-                    key=lambda item: item.designator,
-                )
-            )
         runways.append(
             RunwayGeometry(
                 runway_number=runway_number,
@@ -251,7 +196,7 @@ def build_runways(
                 end=end,
                 width=width,
                 feature_indices=feature_indices,
-                ends=ends,
+                ends=(),
                 length_meters=(
                     None
                     if physical_dimensions is None
@@ -264,10 +209,9 @@ def build_runways(
                 ),
             )
         )
-    reconciled = _apply_atc_runway_ends(layout, tuple(runways), atc)
-    return _infer_unlabeled_runway_ends(
-        reconciled,
-        magnetic_variation_degrees,
+    return _apply_runway_labels(
+        layout, tuple(runways), atc, magnetic_variation_degrees,
+        objective_heading_degrees,
     )
 
 
@@ -278,8 +222,16 @@ def build_ils_approaches(
     atc: AtcAirbaseData | None = None,
     *,
     runways: tuple[RunwayGeometry, ...] | None = None,
+    objective_heading_degrees: float = 0.0,
 ) -> tuple[IlsApproach, ...]:
-    """Associate ordered Stations+Ils frequencies with authored runway ends."""
+    """Associate Stations+Ils frequency slots with reciprocal approach headers.
+
+    Each physical runway's database RunwayNumber owns two consecutive slots.
+    Within its pair of headers, preserve authored order: the first slot serves
+    the second header's approach, and the second slot serves the first header's
+    approach. Keep zero-frequency slots in place so later assignments cannot
+    shift; omit unserved approaches only after associating the slots.
+    """
 
     runways_by_number = {
         runway.runway_number: runway
@@ -288,49 +240,50 @@ def build_ils_approaches(
                 layout,
                 atc,
                 magnetic_variation_degrees,
+                objective_heading_degrees=objective_heading_degrees,
             )
             if runways is None
             else runways
         )
     }
-    atc_by_header = _match_atc_to_route_headers(layout, atc)
-    runway_headers = tuple(
-        header
-        for header in layout.point_headers
-        if header.type_ == 1 and header.feature_dependency_indices
+    atc_by_header = _match_atc_to_route_headers(
+        layout, atc, objective_heading_degrees,
     )
+    headers_by_runway: dict[int, list[ObjectivePointHeader]] = {}
+    for header in layout.point_headers:
+        if header.type_ == ROUTE_HEADER_TYPE:
+            headers_by_runway.setdefault(header.runway_number, []).append(header)
     variation = magnetic_variation_degrees or 0.0
     approaches: list[IlsApproach] = []
-    for header, frequency in zip(runway_headers, runway_ils_frequencies):
-        if frequency <= 0:
+    for runway_number in range(len(runway_ils_frequencies) // 2):
+        headers = headers_by_runway.get(runway_number, [])
+        # An incomplete or ambiguous pair cannot resolve an opposite header.
+        if len(headers) != 2:
             continue
-        runway = runways_by_number.get(header.runway_number)
+        runway = runways_by_number.get(runway_number)
         if runway is None or not runway.ends:
             continue
-        atc_entry = atc_by_header.get(header.index)
-        course_true = _resolved_header_course(runway, header, atc_entry)
-        course_magnetic = (course_true - variation) % 360.0
-        runway_end = (
-            _runway_end_for_qfu(runway, atc_entry.qfu)
-            if atc_entry is not None
-            else min(
-                runway.ends,
-                key=lambda item: _angular_distance(
-                    _designator_heading(item.designator),
-                    course_magnetic,
+        for offset, header in enumerate(reversed(headers)):
+            frequency = runway_ils_frequencies[2 * runway_number + offset]
+            if frequency <= 0:
+                continue
+            atc_entry = atc_by_header.get(header.index)
+            local_course = _resolved_header_course(
+                runway, header, atc_entry, objective_heading_degrees,
+            )
+            course_true = (local_course + objective_heading_degrees) % 360.0
+            course_magnetic = (course_true - variation) % 360.0
+            runway_end = _runway_end_for_course(runway, local_course)
+            approaches.append(
+                IlsApproach(
+                    designator=runway_end.designator,
+                    runway_number=header.runway_number,
+                    course_true=course_true,
+                    course_magnetic=course_magnetic,
+                    threshold=runway_end.point,
+                    frequency_hundredths_mhz=frequency,
                 ),
             )
-        )
-        approaches.append(
-            IlsApproach(
-                designator=runway_end.designator,
-                runway_number=header.runway_number,
-                course_true=course_true,
-                course_magnetic=course_magnetic,
-                threshold=runway_end.point,
-                frequency_hundredths_mhz=frequency,
-            )
-        )
     return tuple(approaches)
 
 
@@ -379,192 +332,90 @@ def _runway_outline_geometry(
     return start, end, width
 
 
-def _apply_atc_runway_ends(
+def _route_header_course(
+    layout: ObjectiveFeatureLayout,
+    header: ObjectivePointHeader,
+) -> float | None:
+    """Return the signed local approach bearing from the first two PDX points.
+
+    The authored approach direction is first point minus next point. Local x
+    is east and y is north, so atan2(dx, dy) measures clockwise from north.
+    Airport rotation and magnetic variation are applied when forming labels.
+    """
+
+    # A terminal flag marks the end of the route, independently of PointCount.
+    if header.first_point_index < 0:
+        return None
+    points = layout.points[header.first_point_index : header.first_point_index + 2]
+    if len(points) < 2 or (points[0].flags or 0) & 2:
+        return None
+    first, next_point = points[:2]
+    dx = first.offset_x - next_point.offset_x
+    dy = first.offset_y - next_point.offset_y
+    if dx == 0.0 and dy == 0.0:
+        return None
+    # Keep the signed angle: label rounding truncates before wrapping to 0..360.
+    return math.degrees(math.atan2(dx, dy))
+
+
+def _apply_runway_labels(
     layout: ObjectiveFeatureLayout,
     runways: tuple[RunwayGeometry, ...],
     atc: AtcAirbaseData | None,
-) -> tuple[RunwayGeometry, ...]:
-    atc_by_header = _match_atc_to_route_headers(layout, atc)
-    if not atc_by_header:
-        return runways
-
-    runway_index_by_number = {
-        runway.runway_number: index for index, runway in enumerate(runways)
-    }
-    candidates = _runway_designator_candidates(layout)
-    atc_ends: list[_AtcEndCandidate] = []
-    for header in sorted(
-        (
-            item
-            for item in layout.point_headers
-            if item.type_ == ROUTE_HEADER_TYPE
-        ),
-        key=lambda item: item.index,
-    ):
-        entry = atc_by_header.get(header.index)
-        runway_index = runway_index_by_number.get(header.runway_number)
-        if entry is None or runway_index is None:
-            continue
-        runway = runways[runway_index]
-        threshold = _threshold_for_course(runway, entry.heading_true)
-        suffix = _nearest_feature_suffix(
-            candidates,
-            threshold,
-            entry.qfu,
-        )
-        atc_ends.append(
-            _AtcEndCandidate(runway_index, entry, threshold, suffix)
-        )
-
-    ends_by_qfu: dict[int, list[int]] = {}
-    for index, candidate in enumerate(atc_ends):
-        ends_by_qfu.setdefault(candidate.entry.qfu, []).append(index)
-    for indices in ends_by_qfu.values():
-        if len(indices) not in (2, 3):
-            continue
-        runway_indices = {atc_ends[index].runway_index for index in indices}
-        if len(runway_indices) != len(indices):
-            continue
-        headings = [
-            atc_ends[index].entry.heading_true
-            for index in indices
-        ]
-        if any(
-            _axis_angular_distance(headings[0], heading) > 5.0
-            for heading in headings[1:]
-        ):
-            continue
-        heading = headings[0]
-        right_x = math.cos(math.radians(heading))
-        right_y = -math.sin(math.radians(heading))
-        ordered = sorted(
-            indices,
-            key=lambda index: (
-                atc_ends[index].threshold.x * right_x
-                + atc_ends[index].threshold.y * right_y,
-                atc_ends[index].runway_index,
-            ),
-        )
-        suffixes = ("L", "R") if len(ordered) == 2 else ("L", "C", "R")
-        for index, suffix in zip(ordered, suffixes):
-            atc_ends[index].suffix = suffix
-
-    replacements: dict[int, list[RunwayEnd]] = {}
-    for candidate in atc_ends:
-        designator = f"{candidate.entry.qfu:02d}{candidate.suffix}"
-        replacements.setdefault(candidate.runway_index, []).append(
-            RunwayEnd(designator, candidate.threshold)
-        )
-
-    reconciled = list(runways)
-    for runway_index, runway_ends in replacements.items():
-        deduplicated = {
-            (item.designator, item.point): item for item in runway_ends
-        }
-        ends = tuple(
-            sorted(deduplicated.values(), key=lambda item: item.designator)
-        )
-        if len(ends) == 1:
-            known_end = ends[0]
-            runway = runways[runway_index]
-            opposite_point = (
-                runway.end if known_end.point == runway.start else runway.start
-            )
-            ends = tuple(
-                sorted(
-                    (
-                        known_end,
-                        RunwayEnd(
-                            _reciprocal_designator(known_end.designator),
-                            opposite_point,
-                        ),
-                    ),
-                    key=lambda item: item.designator,
-                )
-            )
-        reconciled[runway_index] = replace(runways[runway_index], ends=ends)
-    return tuple(reconciled)
-
-
-def _infer_unlabeled_runway_ends(
-    runways: tuple[RunwayGeometry, ...],
     magnetic_variation_degrees: float | None,
+    objective_heading_degrees: float,
 ) -> tuple[RunwayGeometry, ...]:
-    """Name otherwise unlabeled thresholds from their physical magnetic axis."""
+    """Prefer ATC runway numbers; otherwise derive them from magnetic bearings.
 
-    if magnetic_variation_degrees is None:
-        return runways
-    candidates: list[_InferredEndCandidate] = []
-    for runway_index, runway in enumerate(runways):
-        if runway.ends:
+    Add airport rotation to the local bearing, then subtract magnetic variation
+    (east positive). The header's LandingPattern supplies the L/R suffix.
+    """
+
+    atc_by_header = _match_atc_to_route_headers(
+        layout, atc, objective_heading_degrees,
+    )
+    runways_by_number = {r.runway_number: r for r in runways}
+    ends_by_runway: dict[int, list[RunwayEnd]] = {}
+    for header in layout.point_headers:
+        if header.type_ != ROUTE_HEADER_TYPE:
             continue
-        forward = _course_between(runway.start, runway.end)
-        forward_qfu = _qfu_for_magnetic_heading(
-            forward - magnetic_variation_degrees
-        )
-        candidates.extend(
-            (
-                _InferredEndCandidate(
-                    runway_index,
-                    forward_qfu,
-                    forward,
-                    runway.start,
-                ),
-                _InferredEndCandidate(
-                    runway_index,
-                    ((forward_qfu + 17) % 36) + 1,
-                    (forward + 180.0) % 360.0,
-                    runway.end,
-                ),
+        runway = runways_by_number.get(header.runway_number)
+        if runway is None:
+            continue
+        entry = atc_by_header.get(header.index)
+        course = _route_header_course(layout, header)
+        if course is None:
+            # Incomplete route points cannot reproduce the sim's lookup.
+            # Keep the chart usable using the resolved physical runway axis.
+            course = _resolved_header_course(
+                runway, header, entry, objective_heading_degrees,
+            )
+        qfu = (
+            entry.qfu if entry is not None else _qfu_for_magnetic_heading(
+                course + objective_heading_degrees
+                - (magnetic_variation_degrees or 0.0)
             )
         )
-
-    candidates_by_qfu: dict[int, list[_InferredEndCandidate]] = {}
-    for candidate in candidates:
-        candidates_by_qfu.setdefault(candidate.qfu, []).append(candidate)
-    for parallel in candidates_by_qfu.values():
-        if len(parallel) not in (2, 3):
-            continue
-        if any(
-            _axis_angular_distance(parallel[0].course_true, item.course_true)
-            > 5.0
-            for item in parallel[1:]
-        ):
-            continue
-        heading = parallel[0].course_true
-        right_x = math.cos(math.radians(heading))
-        right_y = -math.sin(math.radians(heading))
-        ordered = sorted(
-            parallel,
-            key=lambda item: (
-                item.threshold.x * right_x + item.threshold.y * right_y,
-                item.runway_index,
-            ),
+        suffix = {-1: "L", 1: "R"}.get(header.landing_pattern, "")
+        ends_by_runway.setdefault(header.runway_number, []).append(
+            RunwayEnd(f"{qfu:02d}{suffix}", _threshold_for_course(runway, course))
         )
-        suffixes = ("L", "R") if len(ordered) == 2 else ("L", "C", "R")
-        for candidate, suffix in zip(ordered, suffixes):
-            candidate.suffix = suffix
-
-    inferred_by_runway: dict[int, list[RunwayEnd]] = {}
-    for candidate in candidates:
-        inferred_by_runway.setdefault(candidate.runway_index, []).append(
-            RunwayEnd(
-                f"{candidate.qfu:02d}{candidate.suffix}",
-                candidate.threshold,
-            )
+    return tuple(
+        replace(
+            runway,
+            ends=tuple(sorted(
+                set(ends_by_runway.get(runway.runway_number, ())),
+                key=lambda end: (end.designator, end.point.x, end.point.y),
+            )),
         )
-    reconciled = list(runways)
-    for runway_index, ends in inferred_by_runway.items():
-        reconciled[runway_index] = replace(
-            runways[runway_index],
-            ends=tuple(sorted(ends, key=lambda item: item.designator)),
-        )
-    return tuple(reconciled)
+        for runway in runways
+    )
 
 
 def _match_atc_to_route_headers(
     layout: ObjectiveFeatureLayout,
     atc: AtcAirbaseData | None,
+    objective_heading_degrees: float = 0.0,
 ) -> dict[int, AtcRunwayEntry]:
     if atc is None:
         return {}
@@ -606,7 +457,7 @@ def _match_atc_to_route_headers(
             0.0 if header.runway_number == record.runway_number else 1000.0
         )
         return runway_penalty + _angular_distance(
-            header.data,
+            header.data + objective_heading_degrees,
             record.heading_true,
         )
 
@@ -690,14 +541,18 @@ def _resolved_header_course(
     runway: RunwayGeometry,
     header: ObjectivePointHeader,
     atc_entry: AtcRunwayEntry | None,
+    objective_heading_degrees: float = 0.0,
 ) -> float:
-    """Keep precise authored courses unless the physical axis rejects them."""
+    """Resolve a local course, retaining authored precision when on-axis."""
 
     if _axis_angular_distance(header.data, runway.heading_true) <= 1.0:
         return header.data % 360.0
     forward = _course_between(runway.start, runway.end)
     reverse = (forward + 180.0) % 360.0
-    reference = header.data if atc_entry is None else atc_entry.heading_true
+    reference = (
+        header.data if atc_entry is None
+        else atc_entry.heading_true - objective_heading_degrees
+    )
     return (
         forward
         if _angular_distance(reference, forward)
@@ -706,45 +561,16 @@ def _resolved_header_course(
     )
 
 
-def _nearest_feature_suffix(
-    candidates: tuple[tuple[str, Point], ...],
-    threshold: Point,
-    qfu: int,
-) -> str:
-    nearby = tuple(
-        (designator, point)
-        for designator, point in candidates
-        if _distance(point, threshold) <= 300.0
-    )
-    if not nearby:
-        return ""
-    exact = tuple(
-        item for item in nearby if _designator_number(item[0]) == qfu
-    )
-    pool = exact or nearby
-    designator, _ = min(
-        pool,
-        key=lambda item: (_distance(item[1], threshold), item[0]),
-    )
-    match = re.fullmatch(r"\d{2}([LRC]?)", designator)
-    return "" if match is None else match.group(1)
-
-
-def _runway_end_for_qfu(
+def _runway_end_for_course(
     runway: RunwayGeometry,
-    qfu: int,
+    local_course: float,
 ) -> RunwayEnd:
-    exact = tuple(
-        item for item in runway.ends if _designator_number(item.designator) == qfu
-    )
-    if exact:
-        return min(exact, key=lambda item: item.designator)
+    """Associate geometry by physical end, even when ATC markings are stale."""
+
+    threshold = _threshold_for_course(runway, local_course)
     return min(
         runway.ends,
-        key=lambda item: (
-            _angular_distance(_designator_heading(item.designator), qfu * 10.0),
-            item.designator,
-        ),
+        key=lambda end: (_distance(end.point, threshold), end.designator),
     )
 
 
@@ -866,18 +692,25 @@ def build_parking_charts(
     runways: tuple[RunwayGeometry, ...] | None = None,
     atc: AtcAirbaseData | None = None,
     magnetic_variation_degrees: float | None = None,
+    *,
+    objective_heading_degrees: float = 0.0,
 ) -> tuple[ParkingChart, ...]:
     """Return one exact, zero-based parking list for each runway end."""
 
     runway_geometries = (
-        build_runways(layout, atc, magnetic_variation_degrees)
+        build_runways(
+            layout, atc, magnetic_variation_degrees,
+            objective_heading_degrees=objective_heading_degrees,
+        )
         if runways is None
         else runways
     )
     runways_by_number = {
         runway.runway_number: runway for runway in runway_geometries
     }
-    atc_by_header = _match_atc_to_route_headers(layout, atc)
+    atc_by_header = _match_atc_to_route_headers(
+        layout, atc, objective_heading_degrees,
+    )
     charts: list[ParkingChart] = []
     for header in sorted(
         (
@@ -891,20 +724,10 @@ def build_parking_charts(
         if runway is None or not runway.ends:
             continue
         atc_entry = atc_by_header.get(header.index)
-        runway_end = (
-            _runway_end_for_qfu(runway, atc_entry.qfu)
-            if atc_entry is not None
-            else min(
-                runway.ends,
-                key=lambda item: (
-                    _angular_distance(
-                        header.data,
-                        _designator_heading(item.designator),
-                    ),
-                    item.designator,
-                ),
-            )
+        local_course = _resolved_header_course(
+            runway, header, atc_entry, objective_heading_degrees,
         )
+        runway_end = _runway_end_for_course(runway, local_course)
         positions = tuple(
             NumberedParkingPosition(
                 number=number,
@@ -923,11 +746,7 @@ def build_parking_charts(
             ParkingChart(
                 designator=runway_end.designator,
                 runway_number=header.runway_number,
-                heading_true=_resolved_header_course(
-                    runway,
-                    header,
-                    atc_entry,
-                ),
+                heading_true=(local_course + objective_heading_degrees) % 360.0,
                 positions=positions,
             )
         )
@@ -1180,47 +999,6 @@ def _parking_position(point: ObjectivePointDefinition) -> ParkingPosition:
     )
 
 
-def _runway_designator_candidates(
-    layout: ObjectiveFeatureLayout,
-) -> tuple[tuple[str, Point], ...]:
-    candidates: dict[tuple[str, float, float], tuple[str, Point]] = {}
-    for feature in layout.features:
-        name = feature.name or ""
-        match = RUNWAY_THRESHOLD_PATTERN.search(name) or RUNWAY_SIGN_PATTERN.search(name)
-        if match is None:
-            continue
-        designator = match.group(1).upper()
-        point = Point(feature.offset_x, feature.offset_y)
-        candidates[(designator, point.x, point.y)] = (designator, point)
-    return tuple(candidates[key] for key in sorted(candidates))
-
-
-def _designators_for_runway(
-    candidates: tuple[tuple[str, Point], ...],
-    start: Point,
-    end: Point,
-    *,
-    width: float,
-) -> tuple[tuple[str, Point], ...]:
-    axis_x = end.x - start.x
-    axis_y = end.y - start.y
-    length_squared = axis_x * axis_x + axis_y * axis_y
-    assigned: dict[str, tuple[str, Point]] = {}
-    for designator, point in candidates:
-        if length_squared == 0:
-            continue
-        fraction = (
-            (point.x - start.x) * axis_x + (point.y - start.y) * axis_y
-        ) / length_squared
-        closest = Point(
-            start.x + min(1.0, max(0.0, fraction)) * axis_x,
-            start.y + min(1.0, max(0.0, fraction)) * axis_y,
-        )
-        if _distance(point, closest) <= width:
-            assigned[designator] = (designator, point)
-    return tuple(assigned[key] for key in sorted(assigned))
-
-
 def _edge_key(
     left: Point,
     right: Point,
@@ -1251,41 +1029,15 @@ def _distance(left: Point, right: Point) -> float:
     return math.hypot(right.x - left.x, right.y - left.y)
 
 
-def _designator_heading(designator: str) -> float:
-    match = re.match(r"^(\d{2})", designator)
-    if match is None:
-        return 0.0
-    runway_number = int(match.group(1))
-    return 0.0 if runway_number == 36 else runway_number * 10.0
-
-
-def _designator_number(designator: str) -> int | None:
-    match = re.match(r"^(\d{2})", designator)
-    if match is None:
-        return None
-    runway_number = int(match.group(1))
-    return runway_number if 1 <= runway_number <= 36 else None
-
-
-def _reciprocal_designator(designator: str) -> str:
-    match = re.fullmatch(r"(\d{2})([LRC]?)", designator.upper())
-    if match is None:
-        return designator
-    runway_number = int(match.group(1))
-    reciprocal_number = ((runway_number + 17) % 36) + 1
-    reciprocal_suffix = {"L": "R", "R": "L"}.get(
-        match.group(2),
-        match.group(2),
-    )
-    return f"{reciprocal_number:02d}{reciprocal_suffix}"
-
-
 def _course_between(start: Point, end: Point) -> float:
     return math.degrees(math.atan2(end.x - start.x, end.y - start.y)) % 360.0
 
 
 def _qfu_for_magnetic_heading(heading: float) -> int:
-    rounded = int(math.floor((heading % 360.0 + 5.0) / 10.0)) % 36
+    # For simulator-compatible labels, truncate before wrapping, then round to
+    # the nearest ten degrees (five rounds up). North is runway 36.
+    degrees = int(heading) % 360
+    rounded = ((degrees + 5) // 10) % 36
     return 36 if rounded == 0 else rounded
 
 

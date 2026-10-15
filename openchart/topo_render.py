@@ -172,6 +172,7 @@ def render_topographic_chart_svg(
             airport.layout,
             airport.atc,
             airport.magnetic_variation_degrees,
+            objective_heading_degrees=airport.placement.heading,
         )
         routes = build_route_edges(airport.layout)
         taxiway_surfaces = build_taxiway_surfaces(airport)
@@ -621,6 +622,7 @@ def _airport_ils_approaches(
         airport.magnetic_variation_degrees,
         airport.atc,
         runways=runways,
+        objective_heading_degrees=airport.placement.heading,
     )
 
 
@@ -892,7 +894,8 @@ def _ils_feathers(
         )
 
     for approach in approaches:
-        angle = math.radians(approach.course_true)
+        # Feathers use local points; _layout_to_grid applies airport rotation.
+        angle = math.radians(approach.course_true - airport.placement.heading)
         inbound_x = math.sin(angle)
         inbound_y = math.cos(angle)
         normal_x = -inbound_y
@@ -1564,9 +1567,10 @@ def _msa_indicator(
             -runway.runway_number,
         ),
     )
+    heading_true = (primary.heading_true + airport.placement.heading) % 360.0
     sectors = build_msa_sectors(
         window,
-        primary.heading_true,
+        heading_true,
         airport.magnetic_variation_degrees,
     )
     group = _element(
@@ -1575,7 +1579,7 @@ def _msa_indicator(
             "id": "msa-indicator",
             "data-radius-nm": "25",
             "data-anchor-runway-number": str(primary.runway_number),
-            "data-anchor-heading-true": _number(primary.heading_true),
+            "data-anchor-heading-true": _number(heading_true),
             "data-sector-count": str(len(sectors)),
         },
         parent,
@@ -2029,8 +2033,8 @@ def _airport_minimap(
 
 def _minimap_north_up(point: Point, heading_degrees: float) -> tuple[float, float]:
     angle = math.radians(heading_degrees)
-    north = point.x * math.sin(angle) + point.y * math.cos(angle)
-    east = point.x * math.cos(angle) - point.y * math.sin(angle)
+    north = -point.x * math.sin(angle) + point.y * math.cos(angle)
+    east = point.x * math.cos(angle) + point.y * math.sin(angle)
     return east, -north
 
 
@@ -2080,8 +2084,8 @@ def _layout_to_grid(
     point: Point,
 ) -> tuple[float, float]:
     angle = math.radians(airport.placement.heading)
-    delta_x = point.x * math.sin(angle) + point.y * math.cos(angle)
-    delta_y = point.x * math.cos(angle) - point.y * math.sin(angle)
+    delta_x = -point.x * math.sin(angle) + point.y * math.cos(angle)
+    delta_y = point.x * math.cos(angle) + point.y * math.sin(angle)
     return window.grid_position(
         airport.placement.position_x + delta_x,
         airport.placement.position_y + delta_y,

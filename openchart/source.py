@@ -224,6 +224,7 @@ class AirportRepository:
             support,
             entry.objective_type,
             expected_count=entry.feature_status_count,
+            strict_model_dimensions=False,
         )
         if layout is None:
             count = (
@@ -684,8 +685,8 @@ def _campaign_delta_to_layout_offset(
 ) -> tuple[float, float]:
     angle = math.radians(heading)
     return (
-        delta_x * math.sin(angle) + delta_y * math.cos(angle),
-        delta_x * math.cos(angle) - delta_y * math.sin(angle),
+        -delta_x * math.sin(angle) + delta_y * math.cos(angle),
+        delta_x * math.cos(angle) + delta_y * math.sin(angle),
     )
 
 

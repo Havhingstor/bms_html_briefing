@@ -180,8 +180,11 @@ class MapTransform:
             self.bottom - (rotated.y - self.min_y) * self.scale,
         )
 
-    def north_direction(self) -> tuple[float, float]:
-        angle = math.radians(self.rotation_degrees)
+    def north_direction(
+        self,
+        objective_heading_degrees: float = 0.0,
+    ) -> tuple[float, float]:
+        angle = math.radians(self.rotation_degrees + objective_heading_degrees)
         return (-math.sin(angle), -math.cos(angle))
 
     def unpoint(self, x: float, y: float) -> Point:
@@ -219,6 +222,7 @@ def build_airport_render_context(airport: AirportData) -> AirportRenderContext:
             airport.layout,
             airport.atc,
             airport.magnetic_variation_degrees,
+            objective_heading_degrees=airport.placement.heading,
         ),
         arresting_systems=build_arresting_systems(airport.layout),
         routes=build_route_edges(airport.layout),
@@ -753,8 +757,9 @@ def _north_indicator(
     parent: ET.Element,
     transform: MapTransform,
     magnetic_variation_degrees: float | None,
+    objective_heading_degrees: float = 0.0,
 ) -> None:
-    true_x, true_y = transform.north_direction()
+    true_x, true_y = transform.north_direction(objective_heading_degrees)
     group = _element(
         "g",
         {
@@ -1310,8 +1315,9 @@ def _layout_to_theater_position(
     point: Point,
 ) -> tuple[float, float]:
     angle = math.radians(airport.placement.heading)
-    delta_north = point.x * math.sin(angle) + point.y * math.cos(angle)
-    delta_east = point.x * math.cos(angle) - point.y * math.sin(angle)
+    # Rotate local east/north clockwise by the airport's placement heading.
+    delta_north = -point.x * math.sin(angle) + point.y * math.cos(angle)
+    delta_east = point.x * math.cos(angle) + point.y * math.sin(angle)
     return (
         airport.placement.position_x + delta_north,
         airport.placement.position_y + delta_east,
@@ -1327,8 +1333,8 @@ def _theater_position_to_layout(
     delta_east = east_ft - airport.placement.position_y
     angle = math.radians(airport.placement.heading)
     return Point(
-        delta_north * math.sin(angle) + delta_east * math.cos(angle),
-        delta_north * math.cos(angle) - delta_east * math.sin(angle),
+        -delta_north * math.sin(angle) + delta_east * math.cos(angle),
+        delta_north * math.cos(angle) + delta_east * math.sin(angle),
     )
 
 
@@ -2236,6 +2242,39 @@ def _building_shapes(
         )
 
 
+def _runway_summary(
+    runway: RunwayGeometry,
+    magnetic_variation_degrees: float | None,
+    objective_heading_degrees: float,
+) -> str:
+    """Keep each threshold label paired with its inward runway-axis course."""
+    ends = sorted(runway.ends, key=lambda end: end.designator)
+    designators = "/".join(end.designator for end in ends)
+    courses = []
+    axis_x = math.sin(math.radians(runway.heading_true))
+    axis_y = math.cos(math.radians(runway.heading_true))
+    center_x = (runway.start.x + runway.end.x) / 2.0
+    center_y = (runway.start.y + runway.end.y) / 2.0
+    for end in ends:
+        inward_projection = (
+            (center_x - end.point.x) * axis_x
+            + (center_y - end.point.y) * axis_y
+        )
+        courses.append(
+            runway.heading_true + (180.0 if inward_projection < 0.0 else 0.0)
+        )
+    if not courses:
+        designators = f"#{runway.runway_number}"
+        courses = [runway.heading_true, runway.heading_true + 180.0]
+    suffix = "°T" if magnetic_variation_degrees is None else "°"
+    heading_offset = objective_heading_degrees - (magnetic_variation_degrees or 0.0)
+    headings = " / ".join(
+        f"{(course + heading_offset) % 360.0:05.1f}{suffix}"
+        for course in courses
+    )
+    return f"RWY {designators}  {headings}"
+
+
 def _footer(
     root,
     airport,
@@ -2275,23 +2314,12 @@ def _footer(
             ),
         )
 
-    summaries = []
-    for runway in runways:
-        designators = "/".join(
-            sorted({end.designator for end in runway.ends})
-        ) or f"#{runway.runway_number}"
-        heading = runway.heading_true
-        heading_suffix = "°T"
-        if airport.magnetic_variation_degrees is not None:
-            heading = (
-                heading - airport.magnetic_variation_degrees
-            ) % 360.0
-            heading_suffix = "°"
-        reciprocal = (heading + 180.0) % 360.0
-        summaries.append(
-            f"RWY {designators}  {heading:05.1f}{heading_suffix} / "
-            f"{reciprocal:05.1f}{heading_suffix}"
+    summaries = [
+        _runway_summary(
+            runway, airport.magnetic_variation_degrees, airport.placement.heading
         )
+        for runway in runways
+    ]
     for index, summary in enumerate(summaries):
         _element(
             "text",
@@ -2307,6 +2335,7 @@ def _footer(
         root,
         transform,
         airport.magnetic_variation_degrees,
+        airport.placement.heading,
     )
     _element(
         "text",

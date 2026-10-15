@@ -112,6 +112,7 @@ class ObjectiveFeatureDefinition:
     model_dimensions: ModelDimensions | None = None
     graphics_normal: int | None = None
     class_table: ClassTableEntry | None = None
+    model_dimensions_issue: str | None = None
 
     @property
     def feature_class_number(self) -> int | None:
@@ -736,7 +737,13 @@ def load_objective_feature_layout(
     objective_type: int,
     *,
     expected_count: int | None = None,
+    strict_model_dimensions: bool = True,
 ) -> ObjectiveFeatureLayout | None:
+    """Load the authored layout, optionally recording invalid model bounds.
+
+    Tolerant callers retain features with absent bounds and a diagnostic;
+    other layout and point-data errors still propagate.
+    """
     support_ct_number = objective_type - 100
     ct_entry = support.ct_by_number.get(support_ct_number)
     if ct_entry is None or ct_entry.entity_idx < 0:
@@ -754,7 +761,9 @@ def load_objective_feature_layout(
     objective_name, objective_ct_idx = _load_objective_data(ocd_path)
     if objective_ct_idx != support_ct_number:
         return None
-    features = _load_objective_feature_definitions(support, fed_path)
+    features = _load_objective_feature_definitions(
+        support, fed_path, strict_model_dimensions=strict_model_dimensions
+    )
     if tuple(feature.index for feature in features) != tuple(range(len(features))):
         return None
     if expected_count is not None and len(features) != expected_count:
@@ -899,6 +908,8 @@ def _load_objective_data(path: Path) -> tuple[str, int]:
 def _load_objective_feature_definitions(
     support: SupportData,
     path: Path,
+    *,
+    strict_model_dimensions: bool = True,
 ) -> tuple[ObjectiveFeatureDefinition, ...]:
     features: list[ObjectiveFeatureDefinition] = []
     for node in _xml_root(path).findall("FED"):
@@ -909,6 +920,7 @@ def _load_objective_feature_definitions(
         value_text = node.findtext("Value")
         class_table = support.ct_by_number.get(feature_ct_idx)
         model_dimensions = None
+        model_dimensions_issue = None
         if class_table is not None:
             for models_dir in support.paths.models_dirs:
                 parent_path = _casefold_path(
@@ -917,7 +929,12 @@ def _load_objective_feature_definitions(
                     "Parent.dat",
                 )
                 if parent_path.is_file():
-                    model_dimensions = load_model_dimensions(parent_path)
+                    try:
+                        model_dimensions = load_model_dimensions(parent_path)
+                    except BmsSupportError as exc:
+                        if strict_model_dimensions:
+                            raise
+                        model_dimensions_issue = str(exc)
                     break
         features.append(
             ObjectiveFeatureDefinition(
@@ -930,6 +947,7 @@ def _load_objective_feature_definitions(
                 offset_z=_safe_float(node.findtext("OffsetZ")),
                 heading=_safe_float(node.findtext("Heading")),
                 model_dimensions=model_dimensions,
+                model_dimensions_issue=model_dimensions_issue,
                 graphics_normal=(
                     None if class_table is None else class_table.graphics_normal
                 ),
