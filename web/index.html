@@ -3910,6 +3910,14 @@
       normalizeKneeboardOrderDom();
     }
 
+    function getKneeboardAfterElement(list, y) {
+      return rowsFromKneeboardList(list).find((row) => {
+        if (row.classList.contains("dragging")) return false;
+        const box = row.getBoundingClientRect();
+        return y < box.top + box.height / 2;
+      });
+    }
+
     function attachKneeboardDnD() {
       if (!kneeboardLeftList || !kneeboardRightList || kneeboardDndAttached) return;
       kneeboardDndAttached = true;
@@ -3931,7 +3939,7 @@
           e.preventDefault();
           if (!kneeboardDraggingEl) return;
           if (kneeboardOrderAirframe === "F-15" && list !== kneeboardLeftList) return;
-          const after = getAfterElement(list, e.clientY);
+          const after = getKneeboardAfterElement(list, e.clientY);
           if (after == null) {
             list.appendChild(kneeboardDraggingEl);
           } else {
